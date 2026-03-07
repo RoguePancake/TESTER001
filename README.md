@@ -1181,9 +1181,13 @@ A **phase** is done when:
 A feature that passes the standard DoD above is **done**. A feature that passes the following additional checklist is **field-ready** — meaning safe to put in front of a real crew on a real job site.
 
 **GPS & Location:**
-- [ ] Clock-in tested at three GPS quality levels: excellent (<20m), degraded (200–500m), failed (>500m or permission denied)
-- [ ] Manual GPS fallback tested and records `gps_manual = true` with no coordinates
-- [ ] 15-second GPS timeout tested by enabling airplane mode during the clock-in flow
+- [ ] Clock-in GPS verified outdoors with clear sky: device-reported accuracy ≤15m
+- [ ] Clock-in GPS verified with partial sky obstruction (trees, overhead equipment): accuracy ≤50m
+- [ ] Clock-in GPS verified indoors / under metal canopy: if accuracy >100m, app shows a visible warning — never silently records a degraded coordinate
+- [ ] Geofence enforcement verified: clock-in attempted from >150m outside the site boundary triggers a crew-visible warning and a flag in the back-office record (geofence radius = **150m** from site center coordinates)
+- [ ] Manual GPS fallback tested: records `gps_manual = true`, no lat/lng stored
+- [ ] 15-second GPS timeout tested by enabling airplane mode during clock-in flow
+- [ ] No feature silently submits a null GPS coordinate — if unavailable, record is flagged "GPS unavailable at time of submission"
 
 **Connectivity:**
 - [ ] Feature tested with network throttled to "Slow 3G"
@@ -1293,6 +1297,21 @@ The Week 1 field test **passes** when ALL of the following are true at end of Da
 - Any EOD log is submitted but data is missing/corrupted in the DB
 - App crashes more than once per day on primary workflows
 - GPS failure rate exceeds 40% on Day 2
+- Any partial delivery is recorded as "received" instead of "partial" (affects billing)
+- Draft data is lost after an app kill (zero tolerance — even one instance)
+- Overtime is calculated incorrectly by more than 15 minutes for any shift
+
+### Crew Confidence Survey
+
+At the end of Day 5, each crew member answers these 5 questions on paper. Score each 1 (strongly disagree) → 5 (strongly agree):
+
+1. I was able to clock in and out without help or confusion.
+2. The daily log took less than 5 minutes to complete at end of day.
+3. I trust that my time is being recorded correctly.
+4. I could use the app effectively in direct sunlight and while wearing gloves.
+5. I would use this app every day without being asked to.
+
+**Pass threshold:** Average score ≥ 3.8 across all crew members across all 5 questions. Any single question averaging below 3.0 must be flagged as a UX priority for revision before production rollout, regardless of overall average.
 
 ### Contingency / Backup Plan
 
@@ -1305,6 +1324,17 @@ The Week 1 field test **passes** when ALL of the following are true at end of Da
 | App completely down | Full paper fallback — existing process resumes; post-mortem + fix within 24 hours | Developer |
 
 **Activation threshold:** If any workflow fails for >2 consecutive attempts, activate the corresponding fallback immediately. Do not retry a broken flow during the field test.
+
+**Incident data collection (do this BEFORE restarting or retrying):**
+1. Screenshot the current screen including any error message
+2. Note exact time and what the crew member was doing immediately before the failure
+3. Note device model, OS version, app version (from About screen)
+4. Note cellular signal bars and whether Wi-Fi was active
+5. Note GPS status (showing location / searching / unavailable)
+6. If screen recording is active on the device — stop and save it immediately
+7. Post all of the above to the team bug channel within 5 minutes, tagging engineering directly
+
+If data loss is confirmed (a submitted record cannot be found in the system): **stop testing the affected feature immediately** and contact engineering. Do not attempt to re-submit or recreate the lost record until server logs have been reviewed.
 
 ### Nightly Data Validation Queries
 
