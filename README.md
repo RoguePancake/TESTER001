@@ -18,8 +18,12 @@
 1. [Authentication & Roles](#authentication--roles)
 1. [API Design & Edge Functions](#api-design--edge-functions)
 1. [Module Breakdown](#module-breakdown)
+1. [Feature Spec: Time Clock & Clock Management](#feature-spec-time-clock--clock-management)
+1. [Feature Spec: Journal & Field Notes](#feature-spec-journal--field-notes)
+1. [Feature Spec: Field Tools](#feature-spec-field-tools)
 1. [Development Phases & Milestones](#development-phases--milestones)
 1. [Definition of Done](#definition-of-done)
+1. [Week 1 Field Test Protocol](#week-1-field-test-protocol)
 1. [Testing Strategy](#testing-strategy)
 1. [Development Workflow](#development-workflow)
 1. [Data Collection Strategy](#data-collection-strategy)
@@ -55,7 +59,7 @@ The MVP focuses exclusively on the **core daily operations loop**. Every feature
 | 8 | Delivery log — schedule, receive, flag issues | ✅ | |
 | 9 | Photo capture (in-app, GPS-tagged, tied to job) | ✅ | |
 | 10 | Daily log form (end-of-day summary) | ✅ | This is the AI training data |
-| 11 | Site prep checklists | 🟡 | Nice-to-have; can follow in v1.1 |
+| 11 | Site prep checklists | ✅ | Moved to v1 — required for Week 1 field test |
 | 12 | Reports & payroll export | 🟡 | Basic CSV only in v1 |
 | 13 | Push notifications | 🟡 | Clock-in reminders only in v1 |
 | 14 | Offline mode & sync | 🔴 | v2 — complex to implement correctly |
@@ -501,6 +505,47 @@ CREATE TABLE messages (
   read_by UUID[],
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- ============================================================
+-- FIELD NOTES (mid-shift quick notes — separate from EOD logs)
+-- ============================================================
+CREATE TABLE field_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id UUID REFERENCES jobs(id) NOT NULL,
+  author_id UUID REFERENCES profiles(id) NOT NULL,
+  note_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  body TEXT NOT NULL,                        -- max 2000 chars
+  category TEXT DEFAULT 'general' CHECK (category IN (
+    'general', 'issue', 'material', 'instruction', 'safety', 'client'
+  )),
+  is_pinned BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Schema Additions for Feature Specs
+
+Run these `ALTER TABLE` statements alongside the base schema:
+
+```sql
+-- time_entries: break tracking, GPS accuracy, edit audit trail
+ALTER TABLE time_entries
+  ADD COLUMN breaks JSONB DEFAULT '[]',        -- [{started_at, ended_at, duration_minutes}]
+  ADD COLUMN gps_accuracy_meters INTEGER,      -- NULL = GPS not used (manual entry)
+  ADD COLUMN gps_manual BOOLEAN DEFAULT false, -- true = location entered manually
+  ADD COLUMN edit_history JSONB DEFAULT '[]';  -- [{edited_by, edited_at, original_in, original_out, reason}]
+
+-- daily_logs: draft/submitted lifecycle + edit audit trail
+ALTER TABLE daily_logs
+  ADD COLUMN status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'submitted')),
+  ADD COLUMN edit_history JSONB DEFAULT '[]';
+
+-- deliveries: items JSONB documented shape
+-- Each item in the items array: { name, quantity, unit, sku, received_quantity, item_status }
+-- item_status: 'full' | 'short' | 'over' | 'damaged'
+COMMENT ON COLUMN deliveries.items IS
+  'Array of {name, quantity, unit, sku, received_quantity, item_status} objects';
 ```
 
 -----
@@ -718,6 +763,307 @@ The home screen. Everything at a glance.
 
 -----
 
+## Feature Spec: Time Clock & Clock Management
+
+These specs fill the gaps left by the module-level description. A developer can build directly from this section.
+
+### Clock-In User Flow
+
+**Screen 1 — Pre-Clock-In State**
+- Large "Clock In" button (minimum 60×60pt touch target — glove-accessible)
+- Shows "Not clocked in" + last clock-out time
+- Job selector (required before clock-in proceeds) — picker populated from today's crew assignments
+- If already clocked in: screen shows active timer with "Clock Out" and "Start Break" options
+
+**Screen 2 — GPS Acquisition (blocking step)**
+- Calls `expo-location` with `accuracy: Location.Accuracy.Balanced`
+- Shows spinner: "Getting your location…"
+- GPS accuracy tolerance: **500 meters**. If device reports accuracy > 500m: warn but do not block — "GPS signal weak — location recorded as approximate"
+- Timeout: **15 seconds**. If no GPS fix, offer "Use Last Known Location" or "Enter Location Manually"
+- Manual fallback stores `gps_manual = true` on the time entry and records no coordinates
+
+**Screen 3 — Confirmation**
+- Shows: job name, current time, GPS accuracy indicator (green ≤100m / yellow ≤500m / red >500m or manual)
+- "Confirm Clock In" button — large, single tap
+- On confirm: INSERT to `time_entries` with `clock_in`, lat/lng, job_id, `gps_accuracy_meters`
+
+**Error States:**
+- GPS permission denied → modal: "Location access is required. Enable in Settings." + deep-link to device settings
+- Network error on POST → queue clock-in to Expo SQLite write queue; show "Saved locally — will sync when connected"
+
+### Clock-Out User Flow
+
+**Active Shift Screen:**
+- Shows: job, clock-in time, live elapsed counter, current date
+- Three actions: **Clock Out** / **Start Break** / **Add Note**
+- If shift exceeds 5 hours with no break logged: soft banner "Don't forget to log your lunch break"
+
+**Clock-Out Steps:**
+1. Tap "Clock Out"
+2. GPS acquired (same 500m tolerance, 15s timeout)
+3. If break is currently running: auto-end break, note shown
+4. Confirmation screen: total hours, break deducted, net hours, job
+5. "Confirm Clock Out" → PATCH `time_entries` with `clock_out`, coordinates, calculated `overtime_minutes` (anything > 480 net minutes)
+
+### Break Tracking Flow
+
+Break is a first-class shift action — not an afterthought.
+
+**States:** `on_break` (timer running, "End Break" button only) · `not_on_break` ("Start Break" available)
+
+**Break Flow:**
+1. Tap "Start Break" — no GPS required, timestamp only
+2. Active shift view switches to "On Break" mode with elapsed break timer
+3. Clock Out is **disabled** while on break (prevents accidental early checkout)
+4. Tap "End Break" → duration appended to `breaks` JSONB array, shift resumes
+
+**Break Rules:**
+- Minimum logged duration: 1 minute (prevents accidental taps)
+- Maximum before auto-flag: 90 minutes → creates `activity_feed` event "Break exceeded 90 min — review required"
+- If break is running at clock-out: auto-ended, shown in summary as "Break auto-ended at clock-out"
+
+### Time Entry Edit & Approval Workflow
+
+**Self-edit (any role):**
+1. Open own timesheet → tap entry → "Request Edit"
+2. Enter corrected times + reason (required, max 200 chars)
+3. Entry status → `'edited'`; original values saved to `edit_history` JSONB
+4. Foreman receives in-app notification: "Carlos has requested a timesheet edit"
+
+**Approval (foreman/owner):**
+- Timesheet screen shows badge count of pending approvals
+- Approval queue: employee name, original vs. requested times, reason, original GPS data
+- Actions: **Approve** → `approved_by` set, status `'completed'` · **Reject** → original restored, employee notified · **Edit Further** → override to any values
+
+**Manual Retroactive Entry (foreman/owner only):**
+- Timesheet → "+ Add Entry" (role-gated)
+- Fields: employee (required), job (required), date (required, no future dates), clock-in time, clock-out time, break minutes, reason (required)
+- Saved with `gps_manual = true`, no coordinates, `edit_history` records as retroactive creation
+
+**Split Shifts:** One `time_entries` row per continuous work segment. Multiple entries per user/day are valid and summed for payroll. Overlapping entries are auto-flagged.
+
+### Payroll Export — CSV Column Spec
+
+| # | Column | Source |
+|---|--------|--------|
+| 1 | `employee_id` | `profiles.id` |
+| 2 | `employee_name` | `profiles.full_name` |
+| 3 | `role` | `profiles.role` |
+| 4 | `work_date` | `clock_in::date` (YYYY-MM-DD) |
+| 5 | `job_number` | `jobs.job_number` |
+| 6 | `job_name` | `jobs.client_name` |
+| 7 | `clock_in` | ISO 8601 timestamp |
+| 8 | `clock_out` | ISO 8601 timestamp |
+| 9 | `break_minutes` | Sum of all break durations |
+| 10 | `regular_hours` | Net hours up to 8.0 |
+| 11 | `overtime_hours` | Net hours above 8.0 |
+| 12 | `hourly_rate` | `profiles.hourly_rate` |
+| 13 | `regular_pay` | regular_hours × rate |
+| 14 | `overtime_pay` | OT hours × rate × 1.5 |
+| 15 | `entry_status` | Flag if `'flagged'` or `'edited'` |
+| 16 | `approved_by_name` | `profiles.full_name` (joined) |
+| 17 | `gps_verified` | `NOT gps_manual` |
+| 18 | `notes` | `time_entries.notes` |
+
+**Export Edge Function contract:**
+```
+POST /functions/v1/payroll-export
+Body: { start_date, end_date, user_ids?: string[], job_ids?: string[], include_flagged?: boolean }
+Response: text/csv  Content-Disposition: attachment; filename="payroll_{start}_{end}.csv"
+```
+
+-----
+
+## Feature Spec: Journal & Field Notes
+
+Two distinct note types serve different needs. Both feed the Turf AI data pipeline.
+
+### Two Note Types
+
+| | Field Note | End-of-Day Log |
+|---|---|---|
+| **When** | Any time during shift | Once, at end of shift |
+| **Structure** | Free-form text + category tag | Structured form with required fields |
+| **Save behavior** | Auto-saves on keystroke (no Submit button) | Draft until "Submit" is tapped |
+| **Editable after** | Yes, by author | Locked on submit; foreman can unlock |
+| **Table** | `field_notes` | `daily_logs` |
+| **AI value** | Issues, decisions, material notes | Rich structured data — primary training set |
+
+### Field Note (Mid-Shift) User Flow
+
+**Access:** Dashboard FAB (floating action button), any Job Card → Notes tab, or from within Delivery Receive flow
+
+**Screen — New Field Note (bottom sheet, not full screen):**
+1. Large text area: placeholder "What's happening?" — max 2000 chars, character counter shown at 1500+
+2. Category chips (horizontal row): General / Issue / Material / Safety / Client / Instruction
+3. Job context: auto-filled from active assignment or "Select Job" picker
+4. Auto-save indicator: "Saved" appears 2 seconds after last keystroke — no Submit button
+5. Tap "Done" to dismiss the sheet
+
+**Offline:** Save to local SQLite queue → "Saved locally" indicator → sync on reconnect
+
+**Viewing Notes (Job Card → Notes tab):**
+- Pinned notes first, then reverse chronological
+- Filter chips: All / Issue / Material / Safety
+- Each card: author, timestamp, category badge, body text
+- Long-press own note: Edit / Pin / Delete
+
+### End-of-Day Log Form — Field Specs
+
+| Field | Input Type | Required | Validation |
+|-------|-----------|----------|------------|
+| Job | Picker | ✅ | Active jobs only |
+| Date | Date picker | ✅ | Default today; no future dates |
+| Temp (°F) | Number | No | 0–130; auto-filled from weather API if available |
+| Weather | Picker | No | sunny / cloudy / overcast / rain / wind / fog |
+| Ground Condition | Picker | No | dry / damp / muddy / frozen / standing water |
+| Stage at Start | Picker | ✅ | Must be a valid stage value |
+| Stage at End | Picker | ✅ | Must be ≥ stage at start |
+| Sqft Completed | Number | No | 0–99,999 |
+| Work Summary | Textarea | ✅ | Min 20 chars, max 2000 chars |
+| Issues | Tag/chip input | No | Each tag max 200 chars, max 10 items |
+| Decisions Made | Tag/chip input | No | Each tag max 200 chars, max 10 items |
+| Lessons Learned | Tag/chip input | No | Each tag max 200 chars, max 5 items |
+| Materials Used | Dynamic row list | No | Name + quantity + unit all required per row |
+| Photos | Photo picker | No | Max 10 photos; pulls from today's job photos or camera |
+
+**Draft behavior:** Auto-saves to Zustand (persisted to SQLite) every 30 seconds. Draft uploaded as `status = 'draft'` on first keystroke. "Submit" changes status to `'submitted'` — form becomes read-only.
+
+**Lessons Learned UI:** Tag/chip input with prompt "What would you do differently next time?" Each entry is a discrete chip — not a paragraph — because discrete strings are individually embeddable for Turf AI vector search.
+
+### Edit History for Daily Logs
+
+When a submitted log is unlocked and edited, the pre-edit state is snapshotted into `edit_history JSONB` before saving the new state. Format:
+
+```json
+[{
+  "edited_by": "uuid",
+  "edited_at": "timestamptz",
+  "snapshot": { "...all field values before this edit..." }
+}]
+```
+
+Edit history is visible to owner and the log's author. Shown as a collapsed "Edit History" section at the bottom of any submitted log with changes.
+
+-----
+
+## Feature Spec: Field Tools
+
+### Site Prep Checklists (v1 — Week 1 Required)
+
+Checklists are stored as templates in `constants/checklists.ts` and instantiated into the `checklists` table when a job is created or when a foreman taps "Start Checklist."
+
+**New Install — Site Prep Checklist:**
+1. Site access confirmed (gate code/contact available)
+2. Utilities marked (811 call done or confirmed not needed)
+3. Irrigation shut off or capped
+4. Existing material removed or demo scheduled
+5. Base material delivery confirmed (ETA and quantity)
+6. Compaction equipment on site or reserved
+7. Drainage pattern assessed and documented
+8. Edge/border material staged
+9. Adjacent surfaces protected (concrete, planters)
+10. Client walkthrough done — starting point agreed
+
+**Rip & Replace additions:** Disposal plan confirmed · Staple/adhesive removal tools on truck · Infill weight estimated for disposal
+
+**Pet Turf additions:** Drainage membrane type confirmed · Deodorizer infill on truck · Perimeter confirmed (pets cannot dig under edges)
+
+**Putting Green additions:** Stimpmeter reading agreed with client · Cup locations confirmed and marked · Fringe turf spec confirmed
+
+**Safety Checklist (every job, every day):**
+1. Crew headcount matches assignment
+2. First aid kit on truck and accessible
+3. Water available (hot weather protocol: mandatory check if temp > 90°F)
+4. No overhead hazards in work zone
+5. Tool guards in place on power equipment
+6. Trip hazards marked with cones
+7. PPE distributed (gloves, eye protection)
+8. Emergency contact for site posted
+
+**Checklist UI:** Job Card → Checklists tab → list with completion %. Each item: large checkbox (60×60pt), item label, optional "Add Note" per item. Items checked by any assigned crew member — `checked_by` and timestamp auto-recorded. Checklist locked (read-only) once all items are checked.
+
+### Stage Transition UI
+
+**Decision:** Explicit **button** tap (not swipe or picker). Buttons are unambiguous and glove-friendly.
+
+**Display:** Horizontal scrollable chip row. Current stage = highlighted. Completed = checkmark. Future = grayed.
+
+```
+[demo_prep ✓] → [base_work ✓] → [compaction ●] → [turf_layout] → ...
+```
+
+**Advancing to Next Stage:**
+1. Tap the next stage chip
+2. Bottom sheet: "Advance to [Stage Name]?"
+3. Required: "Stage Notes" text field (min 10 chars) — "What completed [previous stage]?"
+4. Optional: attach photos, flag an issue
+5. "Confirm Advance" → PATCH `jobs.stage`, INSERT `activity_feed` with stage_notes and photos
+
+**Regression prevention:** Tapping a prior stage shows toast: "Stage transitions are forward-only. Contact your foreman to correct." Foreman/Owner: long-press any chip → "Set as Current Stage" → reason required.
+
+**Stage-Specific Prompts:**
+
+| Advancing To | Additional Prompt |
+|---|---|
+| `compaction` | Confirm: "Is base material level and to spec?" |
+| `turf_layout` | Enter: turf roll numbers being used (text, optional) |
+| `seaming` | Picker: seaming method — glue / staple / hybrid |
+| `final_walkthrough` | Must initiate the Final Walkthrough checklist first |
+| `signed_off` | Client signature capture or "Verbal sign-off — timestamp logged" |
+
+### Delivery Receive Flow
+
+**Step 1 — Confirm Arrival:** Tap "Delivery Is Here" → sets `actual_arrival = now()`
+
+**Step 2 — Item Reconciliation:**
+
+For each expected item, show one row:
+
+| Item | Expected | Received | Status |
+|------|---------|---------|--------|
+| Turf Roll (60oz Pet) | 8 rolls | [___] | Full / Short / Over / Damaged |
+| Zeofill Infill 50lb | 24 bags | [___] | Full / Short / Over / Damaged |
+
+- Received qty defaults to expected qty; user adjusts if different
+- If received < expected: status auto-suggests "Short"
+- Any "Damaged": `deliveries.status` = `'damaged'` (takes priority)
+- Any "Short": `deliveries.status` = `'partial'`; system auto-creates a follow-up delivery row for the shorted items with PO# suffixed `-PARTIAL`
+
+**Step 3 — Photo Documentation (required):**
+- "Photo of Delivery Ticket" — cannot proceed without at least one photo
+- "Photos of Delivery Condition" — up to 5, optional
+
+**Step 4 — Condition Notes:** Free text, max 500 chars. Pre-fill suggestion chips if damaged: "Torn packaging" / "Bent roll core" / "Wrong spec" / "Water damaged"
+
+**Step 5 — Confirm:** Summary of items, any issues, photo count → "Complete Delivery" → `activity_feed` event logged
+
+### Photo Capture Flow
+
+**Access Points:** Dashboard FAB, Job Card → Photos tab, within Delivery Receive (auto-categorizes as 'delivery'), within Field Note creation
+
+**Camera Screen:**
+- Full-screen viewfinder
+- Category picker (top): before / during / after / delivery / issue / safety / other
+- Job auto-filled from context; picker available if no context
+- Camera button: minimum 72pt diameter (glove-accessible)
+- Flash toggle for indoor/dark conditions
+- After capture: preview → "Use Photo" / "Retake"
+
+**After Capture:**
+- Optional caption (max 200 chars)
+- GPS auto-tagged from device location
+- Compress to max 1MB before upload (`expo-image-manipulator`)
+- Progress bar shown during upload
+- **Outdoor sunlight**: set device brightness to max while camera is open (`Brightness.setBrightnessAsync(1.0)`)
+
+**Upload Failure Recovery:**
+- Photo saved to device camera roll as fallback (with permission)
+- Queued for retry on next network connection
+- Photos tab badge: "3 pending uploads"
+
+-----
+
 ## Development Phases & Milestones
 
 Development is broken into four phases. Each phase ships a working, testable increment. Do not start the next phase until the current one meets its Definition of Done.
@@ -829,6 +1175,174 @@ A **phase** is done when:
 - [ ] All tasks in the phase checklist are marked complete
 - [ ] All user stories in scope for the phase pass their acceptance criteria
 - [ ] Phase Exit Criteria are verified by a real end-to-end test session
+
+### Field Readiness Criteria
+
+A feature that passes the standard DoD above is **done**. A feature that passes the following additional checklist is **field-ready** — meaning safe to put in front of a real crew on a real job site.
+
+**GPS & Location:**
+- [ ] Clock-in tested at three GPS quality levels: excellent (<20m), degraded (200–500m), failed (>500m or permission denied)
+- [ ] Manual GPS fallback tested and records `gps_manual = true` with no coordinates
+- [ ] 15-second GPS timeout tested by enabling airplane mode during the clock-in flow
+
+**Connectivity:**
+- [ ] Feature tested with network throttled to "Slow 3G"
+- [ ] Feature tested fully offline (airplane mode)
+- [ ] Queued items sync correctly when network is restored
+- [ ] No data loss when app is force-killed mid-operation (killed from task switcher while form is open)
+
+**Device & Environment:**
+- [ ] All tap targets ≥ 48×48pt; primary actions (clock in/out, submit) ≥ 60×60pt
+- [ ] Text readable in direct outdoor sunlight (minimum 4.5:1 contrast ratio; bold weight for primary labels)
+- [ ] App tested wearing nitrile work gloves on a physical device (not simulator)
+- [ ] App tested on iOS 16 and Android 12 minimum
+
+**Performance:**
+- [ ] Clock-in (GPS + DB write) completes in under 10 seconds on LTE
+- [ ] Lists with 50+ records scroll at 60fps without jank
+- [ ] Photos up to 8MB handled without crash (compression brings to <1MB before upload)
+
+**Data Integrity:**
+- [ ] Forms cannot be double-submitted (button disabled immediately on first tap)
+- [ ] Time entry overlap detection fires correctly
+- [ ] All foreign key constraints enforced — no orphaned records creatable through the UI
+
+-----
+
+## Week 1 Field Test Protocol
+
+### Purpose and Scope
+
+The Week 1 field test is a **structured pilot** with real crew, real jobs, and real stakes. Its goal is to determine whether the app can replace the current workflow (text messages, paper timesheets, verbal EOD reports) — not to find bugs in a staging environment.
+
+**Duration:** 5 working days (Mon–Fri of the pilot week)
+
+**Participants:**
+- 1 Owner — observing remotely via dashboard
+- 1–2 Foremen — primary users throughout the day
+- 3–6 Installers — clock-in/out and photo capture only
+- 1 QA observer (can be the developer) — on-site Day 1 and Day 3
+
+### Pre-Test Setup Checklist
+
+All of the following must be true before Day 1:
+
+- [ ] App installed on all participant devices (TestFlight for iOS, APK sideload for Android)
+- [ ] All crew accounts created with correct roles assigned
+- [ ] At least 2 jobs created in the app with correct addresses and crew assigned
+- [ ] Foreman has completed a 15-minute walkthrough of: clock-in, EOD log, delivery receive
+- [ ] Owner has tested dashboard access and can see crew status remotely
+- [ ] Contingency plan (Section 5D below) communicated to all participants
+- [ ] QA observer has Supabase Studio access for real-time data monitoring
+- [ ] Nightly validation queries prepared (see Section 5E)
+
+### Daily Test Script
+
+**Day 1 — Morning (7:00–7:30 AM on site)**
+
+| Test Case | Steps | Pass | Fail |
+|-----------|-------|------|------|
+| TC-01: Clock-in | Each crew member opens app, selects job, taps Clock In | GPS acquired <15s; entry in timesheet | No GPS fallback shown, or entry not saved |
+| TC-02: GPS accuracy | QA notes app's reported accuracy vs. known site address | Location within 500m of site | >500m off with no warning |
+| TC-03: Stage check | Foreman verifies correct starting stage | Stage matches pre-configured value | Wrong stage or fails to load |
+| TC-04: Dashboard | Owner opens dashboard, sees today's jobs and clocked-in crew | Data visible in <5 seconds | Blank or stale data |
+
+**Day 1 — Mid-Morning (10:00 AM)**
+
+| Test Case | Steps | Pass | Fail |
+|-----------|-------|------|------|
+| TC-05: Break logging | One crew member starts break, ends break 20 min later | Break duration recorded; net hours updated | Break not recorded or can't be ended |
+| TC-06: Field note | Foreman taps quick note, types issue, closes sheet | Note in Job Card → Notes tab within 5s | Note lost, not visible, or crash |
+| TC-07: Photo capture | Installer takes 3 photos (before, during, safety) | Photos in job gallery with correct categories | Upload fails with no recovery option |
+
+**Day 1 — Delivery**
+
+| Test Case | Steps | Pass | Fail |
+|-----------|-------|------|------|
+| TC-08: Delivery receive | Foreman opens delivery, reconciles items, photos ticket | Status = 'delivered', photos attached | Cannot complete flow |
+| TC-09: Partial delivery | Enter received qty less than expected for one item | Status = 'partial'; follow-up delivery created | No partial handling |
+
+**Day 1 — End of Day (4:30–5:00 PM)**
+
+| Test Case | Steps | Pass | Fail |
+|-----------|-------|------|------|
+| TC-10: Clock-out | All crew clock out | All entries closed with correct hours | Entry stuck active or hours wrong |
+| TC-11: EOD log | Foreman submits end-of-day log | Log submitted, all required fields present | Form crashes or log not saved |
+| TC-12: Stage advance | Foreman advances job to next stage with notes | Stage updated in DB, visible on dashboard | Stage not saved or silent failure |
+
+**Days 2–4:** Run repeat scenarios across multiple simultaneous jobs; stress test with crew at different sites; confirm no GPS drift or photo upload degradation under real cellular conditions.
+
+**Day 5 — Exit Review:** QA observer presents live database metrics (row counts, flagged entries, data anomalies). Go / No-Go decision made.
+
+### Pass/Fail Exit Criteria
+
+The Week 1 field test **passes** when ALL of the following are true at end of Day 5:
+
+| Criterion | Target | Data Source |
+|-----------|--------|-------------|
+| Clock-in completion rate | >95% captured without manual correction | `time_entries` count vs. crew × workdays |
+| GPS verification rate | >80% of clock-ins GPS-verified (`gps_manual = false`) | `time_entries` query |
+| EOD log submission rate | 100% of working days have a submitted log per active job | `daily_logs.status = 'submitted'` count |
+| Data loss incidents | 0 confirmed instances | Participant reports |
+| App crash rate | 0 crashes on primary workflows | Participant reports + Expo error logs |
+| Crew independence | >80% of crew used app independently on Day 3 without foreman help | QA observation |
+| Clock-in speed | Median <90 seconds app open → confirmed clock-in | QA timed observation |
+
+**The test fails** (halt and fix) if:
+- Any clock-in is permanently lost and requires manual payroll correction
+- Any EOD log is submitted but data is missing/corrupted in the DB
+- App crashes more than once per day on primary workflows
+- GPS failure rate exceeds 40% on Day 2
+
+### Contingency / Backup Plan
+
+| App Feature | Fallback Procedure | Who Manages |
+|-------------|-------------------|-------------|
+| Clock-in fails | Crew texts foreman start time; foreman enters retroactive entry same day | Foreman |
+| EOD log fails to submit | Foreman fills paper EOD template (PDF), emails to owner; developer imports manually | Developer |
+| Photo upload fails | Photos stay in device camera roll; foreman sends via text/email; developer uploads | Foreman + Developer |
+| Delivery receive fails | Foreman photographs ticket, emails owner; status corrected via Supabase Studio | Owner |
+| App completely down | Full paper fallback — existing process resumes; post-mortem + fix within 24 hours | Developer |
+
+**Activation threshold:** If any workflow fails for >2 consecutive attempts, activate the corresponding fallback immediately. Do not retry a broken flow during the field test.
+
+### Nightly Data Validation Queries
+
+Run these in Supabase Studio (SQL Editor) at end of each test day:
+
+```sql
+-- 1. Orphaned active time entries (open >12hrs — likely forgot to clock out)
+SELECT te.id, p.full_name, te.clock_in
+FROM time_entries te JOIN profiles p ON te.user_id = p.id
+WHERE te.clock_out IS NULL AND te.clock_in < NOW() - INTERVAL '12 hours';
+
+-- 2. Jobs without an EOD log today
+SELECT j.job_number, j.client_name
+FROM jobs j
+WHERE j.status = 'in_progress'
+  AND j.id NOT IN (
+    SELECT job_id FROM daily_logs WHERE log_date = CURRENT_DATE AND status = 'submitted'
+  );
+
+-- 3. Partial deliveries without a follow-up delivery row
+SELECT d.id, d.vendor, d.po_number
+FROM deliveries d
+WHERE d.status = 'partial'
+  AND NOT EXISTS (
+    SELECT 1 FROM deliveries d2 WHERE d2.po_number = d.po_number || '-PARTIAL'
+  );
+
+-- 4. Photos without a job assignment
+SELECT COUNT(*) AS orphaned_photos FROM photos WHERE job_id IS NULL;
+
+-- 5. Flagged time entries needing review before next morning
+SELECT te.id, p.full_name, te.clock_in, te.clock_out, te.status
+FROM time_entries te JOIN profiles p ON te.user_id = p.id
+WHERE te.status = 'flagged'
+ORDER BY te.clock_in DESC;
+```
+
+All five queries should return 0 rows (or expected counts) before the next day begins.
 
 -----
 
