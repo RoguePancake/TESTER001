@@ -11,6 +11,7 @@ const navLinks = [
   { href: "/", label: "Dashboard", icon: "⚡" },
   { href: "/hours", label: "Hours", icon: "⏱" },
   { href: "/notepad", label: "Notepad", icon: "📋" },
+  { href: "/tools", label: "Tools", icon: "🔧" },
 ];
 
 export default function RootLayout({
