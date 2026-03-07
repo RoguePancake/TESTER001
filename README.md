@@ -6,25 +6,118 @@
 
 -----
 
+## Table of Contents
+
+1. [Vision](#vision)
+1. [MVP Scope & Success Criteria](#mvp-scope--success-criteria)
+1. [User Stories](#user-stories)
+1. [Core Features](#core-features)
+1. [Architecture Overview](#architecture-overview)
+1. [Tech Stack](#tech-stack)
+1. [Database Schema](#database-schema)
+1. [Authentication & Roles](#authentication--roles)
+1. [API Design & Edge Functions](#api-design--edge-functions)
+1. [Module Breakdown](#module-breakdown)
+1. [Development Phases & Milestones](#development-phases--milestones)
+1. [Definition of Done](#definition-of-done)
+1. [Testing Strategy](#testing-strategy)
+1. [Development Workflow](#development-workflow)
+1. [Data Collection Strategy](#data-collection-strategy)
+1. [AI / Future Intelligence Layer](#ai--future-intelligence-layer)
+1. [Risk Register](#risk-register)
+1. [Deployment & Publishing](#deployment--publishing)
+1. [File & Folder Structure](#file-structure)
+1. [Future Roadmap](#future-roadmap)
+
+-----
+
 ## Vision
 
 Jobsite Operations HQ is a cross-platform personal assistant built for the field superintendent / operations lead running day-to-day artificial turf installation jobs. It captures **every data point** from the moment you start your day — crew hours, material deliveries, job progress, weather conditions, site photos, scheduling changes — and stores it permanently. The long-term goal: build a proprietary dataset that powers a **Turf AI** capable of answering any operational question a seasoned installer would know.
 
 -----
 
-## Table of Contents
+## MVP Scope & Success Criteria
 
-1. [Core Features](#core-features)
-1. [Architecture Overview](#architecture-overview)
-1. [Tech Stack (Recommended)](#tech-stack)
-1. [Database Schema](#database-schema)
-1. [Authentication & Roles](#authentication--roles)
-1. [Module Breakdown](#module-breakdown)
-1. [Data Collection Strategy](#data-collection-strategy)
-1. [AI / Future Intelligence Layer](#ai--future-intelligence-layer)
-1. [Weekend Build Plan](#weekend-build-plan)
-1. [Deployment & Publishing](#deployment--publishing)
-1. [File & Folder Structure](#file-structure)
+### What Is (and Is Not) in v1
+
+The MVP focuses exclusively on the **core daily operations loop**. Every feature below must work end-to-end before launch.
+
+| # | Feature | In MVP | Notes |
+|---|---------|--------|-------|
+| 1 | Auth — login, session persistence, logout | ✅ | Email/password only for v1 |
+| 2 | Role system — owner, foreman, installer, laborer | ✅ | RLS enforced at DB level |
+| 3 | Clock in / clock out with GPS verification | ✅ | GPS required; selfie optional |
+| 4 | Job cards — create, view, edit, status update | ✅ | Core CRUD |
+| 5 | Job stage tracker (9-stage pipeline) | ✅ | Stage transitions logged |
+| 6 | Today's dashboard / morning briefing | ✅ | Jobs, crew, deliveries, weather |
+| 7 | Crew assignments (assign crew to a job/day) | ✅ | |
+| 8 | Delivery log — schedule, receive, flag issues | ✅ | |
+| 9 | Photo capture (in-app, GPS-tagged, tied to job) | ✅ | |
+| 10 | Daily log form (end-of-day summary) | ✅ | This is the AI training data |
+| 11 | Site prep checklists | 🟡 | Nice-to-have; can follow in v1.1 |
+| 12 | Reports & payroll export | 🟡 | Basic CSV only in v1 |
+| 13 | Push notifications | 🟡 | Clock-in reminders only in v1 |
+| 14 | Offline mode & sync | 🔴 | v2 — complex to implement correctly |
+| 15 | Turf AI natural language queries | 🔴 | v3+ |
+| 16 | Client portal | 🔴 | v2+ |
+
+### MVP Success Criteria
+
+The app is ready for field use when all of the following are true:
+
+- [ ] Owner can log in and see today's dashboard in under 5 seconds on LTE
+- [ ] A crew member can clock in (GPS-verified) in under 3 taps
+- [ ] A foreman can create a job card and assign crew in under 2 minutes
+- [ ] A delivery can be logged with photos and PO# in under 90 seconds
+- [ ] End-of-day log can be submitted in under 5 minutes
+- [ ] All data survives an app restart without data loss
+- [ ] App runs on iOS 16+, Android 12+, and modern Chrome/Safari
+- [ ] Zero critical crashes in 30 minutes of end-to-end testing
+
+-----
+
+## User Stories
+
+User stories define what each role needs to accomplish. These drive feature prioritization and acceptance testing.
+
+### Owner
+
+| ID | Story | Priority |
+|----|-------|----------|
+| O-01 | As an owner, I can see a dashboard showing today's active jobs, clocked-in crew, and upcoming deliveries so I know the state of the business without making phone calls. | Must Have |
+| O-02 | As an owner, I can view real-time time entries for all crew members and approve or flag edits. | Must Have |
+| O-03 | As an owner, I can see labor cost vs. bid amount on any job to know if we're on budget. | Must Have |
+| O-04 | As an owner, I can export a payroll report by date range and employee. | Should Have |
+| O-05 | As an owner, I can view performance metrics (sqft/man-hour) per job and crew member. | Should Have |
+
+### Foreman
+
+| ID | Story | Priority |
+|----|-------|----------|
+| F-01 | As a foreman, I can clock myself and my crew in/out with GPS verification so time records are accurate. | Must Have |
+| F-02 | As a foreman, I can update the job stage (e.g., move from "Base Work" to "Compaction") so progress is tracked in real time. | Must Have |
+| F-03 | As a foreman, I can log an end-of-day report including work done, issues, decisions, and materials used. | Must Have |
+| F-04 | As a foreman, I can receive a delivery: confirm items, photograph the delivery ticket, and flag damaged goods. | Must Have |
+| F-05 | As a foreman, I can see tomorrow's job schedule, expected deliveries, and crew assignments when planning the next morning. | Must Have |
+| F-06 | As a foreman, I can send a message to all crew members on a job or broadcast to everyone. | Should Have |
+
+### Installer / Laborer
+
+| ID | Story | Priority |
+|----|-------|----------|
+| I-01 | As an installer, I can clock in and clock out in one tap, with my GPS location recorded automatically. | Must Have |
+| I-02 | As an installer, I can view the jobs I'm assigned to today, including the site address and special instructions. | Must Have |
+| I-03 | As an installer, I can take and upload job photos (before/during/after) from within the app. | Must Have |
+| I-04 | As an installer, I can log a problem or issue I found on site so it's visible to the foreman immediately. | Should Have |
+
+### All Users
+
+| ID | Story | Priority |
+|----|-------|----------|
+| U-01 | As any user, I can log in with my email and password and remain logged in across sessions. | Must Have |
+| U-02 | As any user, my session is automatically invalidated after 30 days of inactivity. | Must Have |
+| U-03 | As any user, I only see data and actions permitted by my role. | Must Have |
 
 -----
 
@@ -33,13 +126,13 @@ Jobsite Operations HQ is a cross-platform personal assistant built for the field
 ### Daily Operations Loop
 
 - **Clock-In / Clock-Out System** — GPS-stamped, photo-verified time tracking for you and your entire crew. Automatic break tracking. Overtime flags.
-- **Morning Briefing Generator** — Auto-generated daily brief: today’s jobs, crew assignments, expected deliveries, weather alerts, yesterday’s carryover tasks.
+- **Morning Briefing Generator** — Auto-generated daily brief: today's jobs, crew assignments, expected deliveries, weather alerts, yesterday's carryover tasks.
 - **End-of-Day Report** — One-tap daily summary: hours worked, tasks completed, materials used, issues flagged, photos captured. Auto-saved and exportable.
 
 ### Personnel Management
 
 - **Crew Roster** — Full employee directory with roles, certifications, hourly rates, emergency contacts.
-- **Time Tracking Dashboard** — Real-time view of who’s clocked in, where, and for how long. Weekly/biweekly payroll summaries.
+- **Time Tracking Dashboard** — Real-time view of who's clocked in, where, and for how long. Weekly/biweekly payroll summaries.
 - **Crew Assignment Engine** — Drag-and-drop crew assignment to jobs. Skill-matching suggestions (e.g., seaming specialist on complex layouts).
 
 ### Job Site Management
@@ -63,7 +156,7 @@ Jobsite Operations HQ is a cross-platform personal assistant built for the field
 ### Communication Hub
 
 - **Crew Messaging** — In-app messaging per job or broadcast to all. No more lost texts.
-- **Client Updates** — One-tap status updates to clients: “Crew is on site,” “Job 50% complete,” “Final walkthrough ready.”
+- **Client Updates** — One-tap status updates to clients: "Crew is on site," "Job 50% complete," "Final walkthrough ready."
 - **Photo Documentation** — Before/during/after photos tied to job cards. Timestamped and GPS-tagged.
 
 ### Reporting & Analytics
@@ -219,7 +312,7 @@ CREATE TABLE jobs (
   zip TEXT,
   lat DECIMAL(10,7),
   lng DECIMAL(10,7),
-  
+
   -- Job Specs
   total_sqft INTEGER,
   turf_type TEXT,                         -- e.g., 'Pet Turf 80oz', 'Putting Green'
@@ -227,13 +320,13 @@ CREATE TABLE jobs (
     'new_install', 'rip_replace', 'pet_turf', 'putting_green',
     'sports_field', 'playground', 'commercial', 'repair'
   )),
-  
+
   -- Financials
   bid_amount DECIMAL(10,2),
   actual_cost DECIMAL(10,2),
   material_cost DECIMAL(10,2),
   labor_cost DECIMAL(10,2),
-  
+
   -- Status & Scheduling
   status TEXT DEFAULT 'scheduled' CHECK (status IN (
     'lead', 'bid_sent', 'approved', 'scheduled', 'in_progress',
@@ -248,11 +341,11 @@ CREATE TABLE jobs (
   estimated_days INTEGER DEFAULT 1,
   start_date DATE,
   completion_date DATE,
-  
+
   -- Notes & Docs
   notes TEXT,
   special_instructions TEXT,
-  
+
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -278,25 +371,25 @@ CREATE TABLE deliveries (
   job_id UUID REFERENCES jobs(id),
   vendor TEXT NOT NULL,
   po_number TEXT,
-  
+
   -- Scheduling
   expected_date DATE,
   expected_time_window TEXT,             -- e.g., '8am-12pm'
   actual_arrival TIMESTAMPTZ,
-  
+
   -- Contents
   items JSONB NOT NULL,                  -- [{name, quantity, unit, sku}]
-  
+
   -- Verification
   received_by UUID REFERENCES profiles(id),
   delivery_ticket_photo_url TEXT,
   condition_notes TEXT,
   condition_photos TEXT[],               -- array of storage URLs
-  
+
   status TEXT DEFAULT 'scheduled' CHECK (status IN (
     'scheduled', 'in_transit', 'delivered', 'partial', 'damaged', 'cancelled'
   )),
-  
+
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -308,29 +401,29 @@ CREATE TABLE daily_logs (
   job_id UUID REFERENCES jobs(id) NOT NULL,
   log_date DATE NOT NULL DEFAULT CURRENT_DATE,
   logged_by UUID REFERENCES profiles(id) NOT NULL,
-  
+
   -- Conditions
   weather_temp INTEGER,
   weather_condition TEXT,                -- 'sunny', 'cloudy', 'rain', etc.
   ground_condition TEXT,                 -- 'dry', 'muddy', 'frozen', etc.
-  
+
   -- Work Done
   stage_at_start TEXT,
   stage_at_end TEXT,
   sqft_completed INTEGER,
   work_summary TEXT,
-  
+
   -- Issues & Decisions
   issues TEXT[],
   decisions_made TEXT[],                 -- why you made the call you did
   lessons_learned TEXT[],
-  
+
   -- Materials Used
   materials_used JSONB,                  -- [{name, quantity, unit}]
-  
+
   -- Photos
   photo_urls TEXT[],
-  
+
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -475,6 +568,65 @@ CREATE POLICY "jobs_financials" ON jobs FOR SELECT USING (
 
 -----
 
+## API Design & Edge Functions
+
+All standard CRUD operations go through **Supabase's auto-generated REST API** with RLS enforcing access. Edge Functions handle logic that can't (or shouldn't) live in the client.
+
+### Supabase REST Patterns
+
+```
+GET    /rest/v1/jobs?status=eq.in_progress        → active jobs
+POST   /rest/v1/time_entries                       → clock in
+PATCH  /rest/v1/time_entries?id=eq.{id}            → clock out / edit
+GET    /rest/v1/crew_assignments?assignment_date=eq.{date} → today's crew
+POST   /rest/v1/daily_logs                         → submit end-of-day log
+POST   /rest/v1/photos                             → log photo metadata
+```
+
+### Edge Functions (Server-Side Logic)
+
+| Function | Trigger | Responsibility |
+|----------|---------|----------------|
+| `morning-briefing` | Cron 5:30 AM daily | Aggregate jobs, crew, deliveries, weather into a single briefing object |
+| `daily-summary` | On-demand (user submits EOD) | Compile day's time entries, stage changes, deliveries, and logs into a summary |
+| `weather-sync` | Cron every 2 hours | Fetch OpenWeatherMap forecast for all active job site zip codes; store in DB |
+| `clock-in-reminder` | Cron 7:00 AM Mon–Sat | Push notification to crew assigned to today's jobs who haven't clocked in |
+| `overtime-check` | On time_entries INSERT/UPDATE | Flag entries exceeding 8hrs/day or 40hrs/week; create activity_feed event |
+
+### Edge Function Contracts
+
+**`morning-briefing` Response:**
+```json
+{
+  "date": "2026-03-07",
+  "jobs_today": [...],
+  "crew_assigned": [...],
+  "deliveries_expected": [...],
+  "weather": { "temp": 68, "condition": "Sunny", "forecast": [...] },
+  "carryover_issues": [...],
+  "alerts": [{ "type": "rain_warning", "message": "...", "job_id": "..." }]
+}
+```
+
+**`daily-summary` Request / Response:**
+```json
+// POST body
+{ "job_id": "uuid", "log_date": "2026-03-07" }
+
+// Response
+{
+  "total_hours": 42.5,
+  "crew_on_site": ["Alice", "Bob", "Carlos"],
+  "stage_progression": "base_work → compaction",
+  "sqft_completed": 620,
+  "issues_flagged": 1,
+  "materials_used": [{ "name": "Infill", "qty": 12, "unit": "bags" }],
+  "photos_taken": 8
+}
+```
+
+-----
+
 ## Module Breakdown
 
 ### Module 1: Command Center (Dashboard)
@@ -484,8 +636,8 @@ The home screen. Everything at a glance.
 **Components:**
 
 - `TodayBrief` — Auto-generated morning briefing (jobs, crew, deliveries, weather)
-- `ActiveTimers` — Who’s clocked in right now, live elapsed time
-- `TodaySchedule` — Timeline view of today’s jobs with status indicators
+- `ActiveTimers` — Who's clocked in right now, live elapsed time
+- `TodaySchedule` — Timeline view of today's jobs with status indicators
 - `QuickActions` — Big tap targets: Clock In, Log Delivery, Take Photo, New Issue
 - `WeatherStrip` — Current + 3-day forecast for active job sites
 - `AlertBanner` — Urgent items: missing clock-ins, overdue deliveries, rain incoming
@@ -516,8 +668,8 @@ The home screen. Everything at a glance.
 
 - `CrewRoster` — All employees with status (active/on-site/off).
 - `AssignmentBoard` — Drag crew members to jobs for a given day/week.
-- `SkillMatrix` — Visual grid of who’s certified for what.
-- `CrewAvailability` — Calendar view of who’s available when.
+- `SkillMatrix` — Visual grid of who's certified for what.
+- `CrewAvailability` — Calendar view of who's available when.
 
 ### Module 5: Delivery Tracker
 
@@ -563,6 +715,243 @@ The home screen. Everything at a glance.
 - `TomorrowPrep` — Auto-generated: jobs scheduled, crew needed, materials to confirm, deliveries expected.
 - `WeekAhead` — 5-day lookahead with weather overlay.
 - `PrepChecklist` — Confirm: trucks loaded, tools staged, crew notified, client contacted.
+
+-----
+
+## Development Phases & Milestones
+
+Development is broken into four phases. Each phase ships a working, testable increment. Do not start the next phase until the current one meets its Definition of Done.
+
+### Phase 1 — Foundation (MVP Core Loop)
+
+**Goal:** A working app that can be used in the field on Day 1.
+
+| Task | Owner | Notes |
+|------|-------|-------|
+| Expo project init + Supabase project creation | Dev | Use `--template tabs` |
+| Connect Expo ↔ Supabase (client init, env vars) | Dev | |
+| Run all DB migrations (schema from this doc) | Dev | Via `supabase db push` |
+| Auth screens: login, signup, forgot password | Dev | Email/password only |
+| Session persistence + auto-logout | Dev | Supabase SecureStore |
+| Bottom tab navigator skeleton (5 tabs) | Dev | |
+| Clock In screen (GPS + timestamp) | Dev | `expo-location` |
+| Clock Out screen (auto-calc hours, break prompt) | Dev | |
+| Job list screen (filterable) | Dev | |
+| Job card: create + view + edit | Dev | |
+| Job stage update (tap to advance) | Dev | |
+| Today's Dashboard (jobs, timers, weather strip) | Dev | Static layout OK for now |
+| Morning briefing Edge Function + display | Dev | |
+| GPS clock-in verification (geofence or distance check) | Dev | |
+| End-to-end test: login → clock in → update job → clock out | Dev | Manual QA |
+
+**Phase 1 Exit Criteria:** All MVP Success Criteria checked off.
+
+---
+
+### Phase 2 — Enhanced Operations
+
+**Goal:** Full crew and delivery operations. Enough to run the business entirely in the app.
+
+| Task | Owner | Notes |
+|------|-------|-------|
+| Crew assignment board (assign crew to jobs per day) | Dev | |
+| Crew roster CRUD | Dev | |
+| Delivery log: schedule, receive, flag | Dev | |
+| Delivery photo capture (ticket + condition) | Dev | |
+| In-app camera (GPS-tagged, tied to job) | Dev | `expo-camera` |
+| Photo gallery per job | Dev | |
+| End-of-day log form | Dev | The AI training data entry point |
+| Daily summary Edge Function | Dev | |
+| Site prep checklists (per job type) | Dev | |
+| Crew messaging (job channel + broadcast) | Dev | Supabase Realtime |
+| Basic payroll CSV export | Dev | |
+| Job cost report (bid vs. actual) | Dev | |
+| Push notifications: clock-in reminder | Dev | `expo-notifications` |
+| Overtime flag and activity feed | Dev | DB trigger + Edge Function |
+
+**Phase 2 Exit Criteria:** A foreman can run a full workday entirely through the app with zero phone calls to the owner.
+
+---
+
+### Phase 3 — Analytics & Polish
+
+**Goal:** Reports that replace spreadsheets. UI quality good enough to show clients.
+
+| Task | Owner | Notes |
+|------|-------|-------|
+| Performance metrics dashboard (sqft/hr, completion rates) | Dev | |
+| Weekly recap auto-generation | Dev | |
+| Before/after photo comparison tool | Dev | |
+| Client update one-tap messages | Dev | |
+| Inventory management + low-stock alerts | Dev | |
+| Waste tracking per job | Dev | |
+| Week-ahead schedule view (5-day + weather overlay) | Dev | |
+| Master calendar (month view, drag-to-reschedule) | Dev | |
+| Skill matrix view (certifications per crew member) | Dev | |
+| UI polish pass (spacing, loading states, error handling) | Dev | |
+| App icon, splash screen, display name | Dev | |
+| TestFlight / Play Store internal testing | Dev | |
+
+**Phase 3 Exit Criteria:** App passes internal 30-day field test with zero data loss incidents.
+
+---
+
+### Phase 4 — Intelligence Layer (Future)
+
+**Goal:** Turn the accumulated data into a competitive advantage.
+
+| Task | Notes |
+|------|-------|
+| ETL pipeline: daily_logs + time_entries → vector DB | pgvector or Pinecone |
+| RAG system powered by Claude API | Natural language queries over operational data |
+| Job duration predictor | Based on sqft, type, crew, weather history |
+| Material estimator (auto-calculate needs from sqft + type) | |
+| Bid intelligence (cost-per-sqft benchmarks from history) | |
+| Voice-to-log (hands-free daily summary dictation) | |
+| Turf AI v1 launch | "How long do pet turf jobs over 2,000 sqft take?" |
+
+-----
+
+## Definition of Done
+
+A feature is **done** when all of the following are true:
+
+- [ ] **Functional:** The feature works end-to-end for all applicable user roles
+- [ ] **Data integrity:** All writes to the DB are validated (type, constraint, RLS)
+- [ ] **Error handled:** User sees a clear error message if something fails (no silent failures, no raw error objects shown)
+- [ ] **Loading states:** Every async operation shows a loading indicator
+- [ ] **Empty states:** Lists and dashboards handle zero-data gracefully
+- [ ] **Tested:** At least one test covers the happy path (see Testing Strategy)
+- [ ] **No console errors:** No unhandled promise rejections or red-box errors in dev mode
+- [ ] **Responsive:** Tested on both a small phone (iPhone SE) and tablet/large screen
+
+A **phase** is done when:
+- [ ] All tasks in the phase checklist are marked complete
+- [ ] All user stories in scope for the phase pass their acceptance criteria
+- [ ] Phase Exit Criteria are verified by a real end-to-end test session
+
+-----
+
+## Testing Strategy
+
+### Test Layers
+
+| Layer | Tool | What it covers |
+|-------|------|----------------|
+| Unit | Jest + Testing Library | Pure functions (calculations, formatters, validators) |
+| Component | React Native Testing Library | Individual UI components in isolation |
+| Integration | Jest + Supabase local | Hooks and stores interacting with the DB |
+| E2E | Detox (mobile) / Playwright (web) | Full user flows across screens |
+| Manual QA | Checklist | Field simulation — real device, real GPS, real camera |
+
+### Test Coverage Targets
+
+- **Unit/Component:** 80% coverage on `lib/` and `stores/` directories
+- **Integration:** Happy path + one failure path per Supabase query
+- **E2E:** Cover all Must Have user stories (see User Stories section)
+- **Manual QA:** Run before every Phase exit
+
+### Key E2E Scenarios to Automate
+
+1. **Clock-in flow** — Open app → tap Clock In → GPS captured → entry visible in timesheet
+2. **Job creation** — Navigate to Jobs → New Job → fill form → save → job appears in list
+3. **Stage advancement** — Open job → tap next stage → stage updates and is timestamped
+4. **Delivery receive** — Open delivery → tap Receive → add photo → confirm → status = delivered
+5. **Daily log submission** — Open EOD form → fill all fields → submit → log appears in job history
+6. **Role gating** — Log in as installer → verify financial tabs are hidden on job card
+
+### Running Tests
+
+```bash
+# Unit + component + integration tests
+npx jest --coverage
+
+# E2E tests (requires running simulator)
+npx detox test --configuration ios.sim.debug
+
+# Web E2E
+npx playwright test
+```
+
+-----
+
+## Development Workflow
+
+### Branching Strategy
+
+```
+main          → production releases only
+staging       → pre-release QA branch
+dev           → active development target
+feature/*     → individual features (branch from dev)
+fix/*         → bug fixes (branch from dev)
+```
+
+**Example:**
+```bash
+git checkout dev
+git pull origin dev
+git checkout -b feature/delivery-photo-capture
+# ... do work ...
+git push origin feature/delivery-photo-capture
+# Open PR → dev
+```
+
+### Pull Request Rules
+
+- Every PR targets `dev` (never directly to `main`)
+- PR description must reference the user story ID it satisfies (e.g., `Closes F-04`)
+- CI must pass (lint + tests) before merge
+- At least 1 review approval required
+- Squash merge to keep history clean
+
+### Commit Message Convention
+
+```
+type(scope): short description
+
+Types: feat | fix | chore | docs | refactor | test
+Scope: auth | jobs | timeclock | deliveries | crew | photos | reports | db
+
+Examples:
+feat(timeclock): add GPS verification on clock-in
+fix(jobs): prevent stage regression below current stage
+chore(db): add missing index on time_entries.user_id
+```
+
+### Local Development Setup
+
+```bash
+# 1. Clone and install
+git clone <repo>
+cd jobsite-ops-hq
+npm install
+
+# 2. Start local Supabase
+supabase start
+# Copy the anon key + URL from output
+
+# 3. Set environment variables
+cp .env.example .env.local
+# Fill in EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY
+
+# 4. Run DB migrations
+supabase db push
+
+# 5. Seed with test data
+supabase db seed --file supabase/seed.sql
+
+# 6. Start the app
+npx expo start
+```
+
+### Code Style
+
+- TypeScript strict mode enabled (`"strict": true` in tsconfig)
+- ESLint + Prettier enforced in CI
+- No `any` types — use proper interfaces from `types/`
+- Supabase queries always use the generated types (`database.ts`)
+- Zustand stores handle all remote state; components stay presentational
 
 -----
 
@@ -627,7 +1016,7 @@ DATA COLLECTION POINTS PER DAY:
 
 - End-of-day auto-summaries using collected data
 - Morning briefings generated from schedule + weather + carryover tasks
-- Simple pattern alerts: “You typically need 2 extra infill bags for jobs over 1,500 sqft”
+- Simple pattern alerts: "You typically need 2 extra infill bags for jobs over 1,500 sqft"
 
 ### Phase 2: Predictive Operations (3-6 Months)
 
@@ -638,10 +1027,10 @@ DATA COLLECTION POINTS PER DAY:
 
 ### Phase 3: Turf AI (6-12 Months)
 
-- **Natural Language Queries** — “How long did pet turf jobs over 2,000 sqft take on average last summer?”
-- **Decision Support** — “Should I schedule this outdoor job for Thursday? Here’s the weather forecast and your historical rain-delay data.”
+- **Natural Language Queries** — "How long did pet turf jobs over 2,000 sqft take on average last summer?"
+- **Decision Support** — "Should I schedule this outdoor job for Thursday? Here's the weather forecast and your historical rain-delay data."
 - **Training Tool** — New hires can ask the AI questions and get answers based on your years of logged operational knowledge.
-- **Bid Intelligence** — “Based on 47 similar jobs, your average cost per sqft for putting greens is $X. Your bid should be at least $Y.”
+- **Bid Intelligence** — "Based on 47 similar jobs, your average cost per sqft for putting greens is $X. Your bid should be at least $Y."
 
 ### Data → AI Pipeline
 
@@ -656,47 +1045,21 @@ Decisions ───┘
 
 -----
 
-## Weekend Build Plan
+## Risk Register
 
-### Saturday Night (Tonight) — Foundation
+Identify risks early. Plan mitigations before they become blockers.
 
-|Time        |Task               |Goal                                                  |
-|------------|-------------------|------------------------------------------------------|
-|**8:00 PM** |Project setup      |Expo init, Supabase project, connect                  |
-|**9:00 PM** |Auth system        |Login/signup screens, session management              |
-|**10:00 PM**|Database schema    |Run all CREATE TABLE migrations                       |
-|**10:30 PM**|Navigation skeleton|Tab navigator: Dashboard, Time, Jobs, Deliveries, More|
-|**11:30 PM**|Clock in/out       |Working time clock with GPS                           |
-|**1:00 AM** |Job cards          |Create/view/edit jobs. Basic job list.                |
-|**2:30 AM** |Break / review     |Test auth + clock + jobs flow end to end              |
-
-### Sunday — Features & Polish
-
-|Time        |Task            |Goal                                             |
-|------------|----------------|-------------------------------------------------|
-|**9:00 AM** |Morning briefing|Auto-generated dashboard with today’s schedule   |
-|**10:30 AM**|Crew assignments|Assign crew to jobs. View who’s where.           |
-|**12:00 PM**|Delivery tracker|Log and track deliveries per job                 |
-|**1:00 PM** |Lunch break     |                                                 |
-|**2:00 PM** |Photo capture   |In-app camera, GPS-tagged, tied to jobs          |
-|**3:30 PM** |Daily log form  |End-of-day data entry: summary, issues, decisions|
-|**5:00 PM** |Checklists      |Site prep and walkthrough checklists             |
-|**6:30 PM** |Polish & test   |UI cleanup, error handling, test all flows       |
-|**8:00 PM** |Build & deploy  |Expo build for iOS/Android. Deploy web to Vercel.|
-|**9:00 PM** |Seed test data  |Add real crew, real jobs for Monday field test   |
-
-### Priority Order (If Time Runs Short)
-
-1. ✅ Auth + Login (must have)
-1. ✅ Clock In/Out (must have)
-1. ✅ Job Cards (must have)
-1. ✅ Dashboard / Today View (must have)
-1. ⬜ Crew Assignments (important)
-1. ⬜ Delivery Tracking (important)
-1. ⬜ Photo Capture (nice to have for v1)
-1. ⬜ Daily Logs (nice to have for v1)
-1. ⬜ Reports (can add next week)
-1. ⬜ Checklists (can add next week)
+| # | Risk | Likelihood | Impact | Mitigation |
+|---|------|-----------|--------|------------|
+| R-01 | Poor GPS signal on job sites (underground parking, warehouses) | High | Medium | Allow manual location entry as fallback; log GPS accuracy score |
+| R-02 | Crew resistance to app adoption | Medium | High | Keep clock-in to max 2 taps; run training session on Day 1; foreman leads by example |
+| R-03 | Supabase outage (cloud dependency) | Low | High | Enable offline queue for clock events; sync on reconnect; alert user when offline |
+| R-04 | App Store review delays (iOS) | Medium | Medium | Use Expo OTA updates for bug fixes; submit early; web version available immediately |
+| R-05 | Photo storage costs grow rapidly | Medium | Low | Compress images before upload (max 1MB); set Supabase Storage lifecycle rules |
+| R-06 | Time entry disputes / manipulation | Low | High | GPS + photo at clock-in; edit trail logged; only owner/foreman can approve edits |
+| R-07 | Data loss during schema migrations | Low | Critical | Always run migrations on a staging DB first; take a Supabase backup before any migration |
+| R-08 | Expo SDK breaking changes on upgrade | Medium | Medium | Pin SDK version; test upgrades in a separate branch; read changelogs before upgrading |
+| R-09 | Scope creep delaying Phase 1 ship | High | High | Enforce MVP scope table ruthlessly; log nice-to-haves in Future Roadmap, not the backlog |
 
 -----
 
@@ -840,6 +1203,11 @@ jobsite-ops-hq/
 │   │   └── weather-sync/
 │   └── seed.sql                  # Test data
 │
+├── __tests__/                    # Test files (mirrors src structure)
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+│
 ├── assets/                       # Images, fonts, icons
 ├── app.json                      # Expo config
 ├── eas.json                      # EAS Build config
@@ -848,19 +1216,6 @@ jobsite-ops-hq/
 ├── package.json
 └── README.md                     # ← You are here
 ```
-
------
-
-## Key Tips for the Weekend Build
-
-1. **Start with the data model, not the UI.** Get your Supabase tables right first. Everything else is just forms and lists on top of good data.
-1. **Use Supabase’s auto-generated TypeScript types.** Run `supabase gen types typescript` and you get type-safe database queries for free.
-1. **Don’t build auth from scratch.** Supabase Auth handles passwords, sessions, JWTs, password reset, and SSO. Just wrap it in your UI.
-1. **Offline-first matters in the field.** Job sites have bad signal. Use WatermelonDB or Expo SQLite to cache locally and sync when online. Even a simple queue of pending writes saves you.
-1. **GPS clock-in is non-negotiable.** If a guy says he’s on site, the GPS should confirm it. Expo Location makes this easy.
-1. **Photos are your most valuable data.** Before/after photos win warranty disputes, impress clients, and train AI. Make the camera one tap from anywhere.
-1. **Log decisions, not just events.** “We moved the crew from Job A to Job B because the base rock delivery was delayed” — that’s the kind of context that makes Turf AI actually smart.
-1. **Ship ugly, then polish.** A working app in the field Monday beats a pretty app that’s still in dev. Get the data flowing first.
 
 -----
 
@@ -874,6 +1229,8 @@ jobsite-ops-hq/
 - [ ] Integration with QuickBooks / accounting software
 - [ ] Turf AI v1: Natural language queries on your operational data
 - [ ] AR overlay: Point phone at job site, see turf layout projected on ground
+- [ ] Offline mode: Full local-first with background sync
+- [ ] Apple/Google SSO for faster crew onboarding
 
 -----
 
@@ -883,4 +1240,4 @@ Proprietary — All rights reserved.
 
 -----
 
-*Built for the field, by someone who knows what it’s like to run a crew, juggle deliveries, and still need to know what’s happening on three job sites at once.*
+*Built for the field, by someone who knows what it's like to run a crew, juggle deliveries, and still need to know what's happening on three job sites at once.*
