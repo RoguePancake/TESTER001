@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import {
   applyDisplayPreferences,
   loadDisplayPreferences,
@@ -16,7 +16,12 @@ const navLinks = [
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+function isActivePath(currentPath: string, href: string) {
+  if (href === "/") return currentPath === "/";
+  return currentPath === href || currentPath.startsWith(`${href}/`);
+}
+
+export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
@@ -30,13 +35,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/" className="font-bold text-base sm:text-lg tracking-tight">
             🏗 Turf Ops Assistant
           </Link>
-          <nav className="hidden md:flex gap-1">
+          <nav className="hidden md:flex gap-1" aria-label="Primary navigation">
             {navLinks.map((link) => {
-              const active = pathname === link.href;
+              const active = isActivePath(pathname, link.href);
               return (
                 <Link
                   key={link.href}
                   href={link.href}
+                  aria-current={active ? "page" : undefined}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                     active
                       ? "bg-white/25 text-white"
@@ -55,14 +61,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      <nav className="app-bottom-nav fixed md:hidden bottom-0 left-0 right-0 z-50 border-t backdrop-blur-md">
+      <nav
+        className="app-bottom-nav fixed md:hidden bottom-0 left-0 right-0 z-50 border-t backdrop-blur-md"
+        aria-label="Mobile navigation"
+      >
         <div className="max-w-5xl mx-auto px-2 py-2 grid grid-cols-5 gap-1">
           {navLinks.map((link) => {
-            const active = pathname === link.href;
+            const active = isActivePath(pathname, link.href);
             return (
               <Link
                 key={link.href}
                 href={link.href}
+                aria-current={active ? "page" : undefined}
                 className={`flex flex-col items-center justify-center gap-1 py-1 text-xs font-medium rounded-lg transition-colors ${
                   active
                     ? "bg-white/20 text-white"
