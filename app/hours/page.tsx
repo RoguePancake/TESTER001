@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   supabase,
   type TimeEntry,
   type Profile,
   type JobSite,
 } from "@/lib/supabase";
+
+// ── localStorage keys ─────────────────────────────────────────────────────
+const LS_ENTRIES = "payclock_entries";
+const LS_PROFILES = "payclock_profiles";
+const LS_COUNTER = "payclock_counter";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -54,19 +59,72 @@ function weekBounds(): { start: Date; end: Date } {
   return { start, end };
 }
 
+// ── localStorage helpers ──────────────────────────────────────────────────
+
+function loadLocalEntries(): TimeEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LS_ENTRIES);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalEntries(entries: TimeEntry[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(LS_ENTRIES, JSON.stringify(entries));
+}
+
+function loadLocalProfiles(): Profile[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LS_PROFILES);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // fall through
+  }
+  // Default crew for first use
+  const defaults: Profile[] = [
+    { id: "crew-1", full_name: "Alex Rivera", role: "Lead Installer", is_active: true, created_at: new Date().toISOString() },
+    { id: "crew-2", full_name: "Sam Brooks", role: "Installer", is_active: true, created_at: new Date().toISOString() },
+    { id: "crew-3", full_name: "Jordan Lee", role: "Laborer", is_active: true, created_at: new Date().toISOString() },
+  ];
+  localStorage.setItem(LS_PROFILES, JSON.stringify(defaults));
+  return defaults;
+}
+
+function saveLocalProfiles(profiles: Profile[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(LS_PROFILES, JSON.stringify(profiles));
+}
+
+function nextLocalId(): string {
+  if (typeof window === "undefined") return `entry-${Date.now()}`;
+  const counter = parseInt(localStorage.getItem(LS_COUNTER) || "0", 10) + 1;
+  localStorage.setItem(LS_COUNTER, String(counter));
+  return `entry-${counter}-${Date.now()}`;
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────
 
-export default function HoursPage() {
+export default function PayClockPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [jobSites, setJobSites] = useState<JobSite[]>([]);
   const [loading, setLoading] = useState(true);
   const [clockingIn, setClockingIn] = useState(false);
+  const [tick, setTick] = useState(0); // forces re-render for live durations
 
   // Clock-in form state
   const [selectedUserId, setSelectedUserId] = useState("");
   const [jobName, setJobName] = useState("");
   const [entryNote, setEntryNote] = useState("");
+
+  // Add crew member form
+  const [showAddCrew, setShowAddCrew] = useState(false);
+  const [newCrewName, setNewCrewName] = useState("");
+  const [newCrewRole, setNewCrewRole] = useState("Installer");
 
   // Filters
   const [filterName, setFilterName] = useState("");
@@ -77,20 +135,39 @@ export default function HoursPage() {
   // View mode
   const [viewMode, setViewMode] = useState<"active" | "weekly" | "timesheet">("active");
 
+  const isLocal = !supabase;
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Live duration ticker (updates every 15 seconds) ──────────────────
+  useEffect(() => {
+    tickRef.current = setInterval(() => setTick((t) => t + 1), 15000);
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current);
+    };
+  }, []);
+
+  // ── Data fetching ─────────────────────────────────────────────────────
+
   const fetchData = useCallback(async () => {
-    if (!supabase) return;
+    if (isLocal) {
+      setProfiles(loadLocalProfiles());
+      setEntries(loadLocalEntries());
+      setJobSites([]);
+      setLoading(false);
+      return;
+    }
     const [profilesRes, entriesRes, sitesRes] = await Promise.all([
-      supabase
+      supabase!
         .from("profiles")
         .select("*")
         .eq("is_active", true)
         .order("full_name"),
-      supabase
+      supabase!
         .from("time_entries")
         .select("*, profiles(full_name, role)")
         .order("clock_in", { ascending: false })
         .limit(500),
-      supabase
+      supabase!
         .from("job_sites")
         .select("*")
         .eq("status", "active")
@@ -100,7 +177,7 @@ export default function HoursPage() {
     if (entriesRes.data) setEntries(entriesRes.data as TimeEntry[]);
     if (sitesRes.data) setJobSites(sitesRes.data);
     setLoading(false);
-  }, []);
+  }, [isLocal]);
 
   useEffect(() => {
     fetchData();
@@ -108,59 +185,86 @@ export default function HoursPage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  // ── Clock In ──────────────────────────────────────────────────────────
+
   async function handleClockIn(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedUserId || !supabase) return;
+    if (!selectedUserId) return;
     setClockingIn(true);
-    await supabase.from("time_entries").insert({
-      user_id: selectedUserId,
-      job_name: jobName || null,
-      notes: entryNote || null,
-      clock_in: new Date().toISOString(),
-    });
 
-    // Cross-post to NAF
-    const profile = profiles.find((p) => p.id === selectedUserId);
-    await supabase.from("naf_entries").insert({
-      entry_type: "clock_in",
-      body: `${profile?.full_name || "Crew member"} clocked in${jobName ? ` at ${jobName}` : ""}${entryNote ? ` — ${entryNote}` : ""}`,
-      job_name: jobName || null,
-      user_id: selectedUserId,
-    });
+    if (isLocal) {
+      const profile = profiles.find((p) => p.id === selectedUserId);
+      const newEntry: TimeEntry = {
+        id: nextLocalId(),
+        user_id: selectedUserId,
+        job_name: jobName || null,
+        clock_in: new Date().toISOString(),
+        clock_out: null,
+        break_minutes: 0,
+        notes: entryNote || null,
+        created_at: new Date().toISOString(),
+        profiles: profile,
+      };
+      const updated = [newEntry, ...entries];
+      setEntries(updated);
+      saveLocalEntries(updated);
+    } else {
+      await supabase!.from("time_entries").insert({
+        user_id: selectedUserId,
+        job_name: jobName || null,
+        notes: entryNote || null,
+        clock_in: new Date().toISOString(),
+      });
+      const profile = profiles.find((p) => p.id === selectedUserId);
+      await supabase!.from("naf_entries").insert({
+        entry_type: "clock_in",
+        body: `${profile?.full_name || "Crew member"} clocked in${jobName ? ` at ${jobName}` : ""}${entryNote ? ` — ${entryNote}` : ""}`,
+        job_name: jobName || null,
+        user_id: selectedUserId,
+      });
+      await fetchData();
+    }
 
     setJobName("");
     setEntryNote("");
     setSelectedUserId("");
     setClockingIn(false);
-    fetchData();
   }
+
+  // ── Clock Out ─────────────────────────────────────────────────────────
 
   async function handleClockOut(entryId: string) {
-    if (!supabase) return;
-    const entry = entries.find((e) => e.id === entryId);
-    await supabase
-      .from("time_entries")
-      .update({ clock_out: new Date().toISOString() })
-      .eq("id", entryId);
-
-    // Cross-post to NAF
-    if (entry) {
-      const profile = profiles.find((p) => p.id === entry.user_id);
-      const ms = Date.now() - new Date(entry.clock_in).getTime();
-      const hrs = Math.floor(ms / 3600000);
-      const mins = Math.floor((ms % 3600000) / 60000);
-      await supabase.from("naf_entries").insert({
-        entry_type: "clock_out",
-        body: `${profile?.full_name || "Crew member"} clocked out — ${hrs}h ${mins}m${entry.job_name ? ` from ${entry.job_name}` : ""}`,
-        job_name: entry.job_name || null,
-        user_id: entry.user_id,
-      });
+    if (isLocal) {
+      const updated = entries.map((e) =>
+        e.id === entryId ? { ...e, clock_out: new Date().toISOString() } : e
+      );
+      setEntries(updated);
+      saveLocalEntries(updated);
+    } else {
+      const entry = entries.find((e) => e.id === entryId);
+      await supabase!
+        .from("time_entries")
+        .update({ clock_out: new Date().toISOString() })
+        .eq("id", entryId);
+      if (entry) {
+        const profile = profiles.find((p) => p.id === entry.user_id);
+        const ms = Date.now() - new Date(entry.clock_in).getTime();
+        const hrs = Math.floor(ms / 3600000);
+        const mins = Math.floor((ms % 3600000) / 60000);
+        await supabase!.from("naf_entries").insert({
+          entry_type: "clock_out",
+          body: `${profile?.full_name || "Crew member"} clocked out — ${hrs}h ${mins}m${entry.job_name ? ` from ${entry.job_name}` : ""}`,
+          job_name: entry.job_name || null,
+          user_id: entry.user_id,
+        });
+      }
+      await fetchData();
     }
-    fetchData();
   }
 
+  // ── Break Update ──────────────────────────────────────────────────────
+
   async function handleBreakUpdate(entryId: string, currentBreak: number) {
-    if (!supabase) return;
     const input = window.prompt(
       "Break minutes for this shift:",
       String(currentBreak)
@@ -168,33 +272,84 @@ export default function HoursPage() {
     if (input === null) return;
     const mins = parseInt(input, 10);
     if (isNaN(mins) || mins < 0) return;
-    await supabase
-      .from("time_entries")
-      .update({ break_minutes: mins })
-      .eq("id", entryId);
-    fetchData();
+
+    if (isLocal) {
+      const updated = entries.map((e) =>
+        e.id === entryId ? { ...e, break_minutes: mins } : e
+      );
+      setEntries(updated);
+      saveLocalEntries(updated);
+    } else {
+      await supabase!
+        .from("time_entries")
+        .update({ break_minutes: mins })
+        .eq("id", entryId);
+      await fetchData();
+    }
   }
+
+  // ── Delete Entry ──────────────────────────────────────────────────────
 
   async function handleDeleteEntry(entryId: string) {
-    if (!supabase) return;
     const confirmed = window.confirm("Delete this time entry?");
     if (!confirmed) return;
-    await supabase.from("time_entries").delete().eq("id", entryId);
-    fetchData();
+
+    if (isLocal) {
+      const updated = entries.filter((e) => e.id !== entryId);
+      setEntries(updated);
+      saveLocalEntries(updated);
+    } else {
+      await supabase!.from("time_entries").delete().eq("id", entryId);
+      await fetchData();
+    }
   }
+
+  // ── Edit Notes ────────────────────────────────────────────────────────
 
   async function handleEditNotes(entryId: string, currentNotes: string | null) {
-    if (!supabase) return;
     const input = window.prompt("Notes for this shift:", currentNotes || "");
     if (input === null) return;
-    await supabase
-      .from("time_entries")
-      .update({ notes: input.trim() || null })
-      .eq("id", entryId);
-    fetchData();
+
+    if (isLocal) {
+      const updated = entries.map((e) =>
+        e.id === entryId ? { ...e, notes: input.trim() || null } : e
+      );
+      setEntries(updated);
+      saveLocalEntries(updated);
+    } else {
+      await supabase!
+        .from("time_entries")
+        .update({ notes: input.trim() || null })
+        .eq("id", entryId);
+      await fetchData();
+    }
   }
 
-  // Derived state
+  // ── Add Crew Member (local mode) ──────────────────────────────────────
+
+  function handleAddCrew(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newCrewName.trim()) return;
+    const newProfile: Profile = {
+      id: `crew-${Date.now()}`,
+      full_name: newCrewName.trim(),
+      role: newCrewRole,
+      is_active: true,
+      created_at: new Date().toISOString(),
+    };
+    const updated = [...profiles, newProfile];
+    setProfiles(updated);
+    saveLocalProfiles(updated);
+    setNewCrewName("");
+    setNewCrewRole("Installer");
+    setShowAddCrew(false);
+  }
+
+  // ── Derived state ─────────────────────────────────────────────────────
+
+  // Use tick to ensure active durations update
+  void tick;
+
   const clockedIn = entries.filter((e) => !e.clock_out);
   const completed = entries.filter((e) => !!e.clock_out);
 
@@ -228,6 +383,13 @@ export default function HoursPage() {
     0
   );
 
+  // Today's hours
+  const todayStr = new Date().toISOString().split("T")[0];
+  const todayEntries = completed.filter(
+    (e) => e.clock_in.split("T")[0] === todayStr
+  );
+  const todayHours = todayEntries.reduce((sum, e) => sum + totalHours(e), 0);
+
   // Filtered timesheet
   const filteredCompleted = completed.filter((e) => {
     if (filterName && !e.profiles?.full_name?.toLowerCase().includes(filterName.toLowerCase()))
@@ -254,7 +416,7 @@ export default function HoursPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-400">
-        Loading time cards...
+        Loading Pay Clock...
       </div>
     );
   }
@@ -263,7 +425,7 @@ export default function HoursPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">
-          ⏱ Hours & Time Cards
+          ⏱ Pay Clock
         </h1>
         <div className="flex gap-1">
           {(
@@ -288,9 +450,87 @@ export default function HoursPage() {
         </div>
       </div>
 
+      {/* ── Today's Stats Strip ──────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-green-700 text-white rounded-xl p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold">{clockedIn.length}</div>
+          <div className="text-xs opacity-80">On Clock Now</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold text-gray-900">
+            {todayHours.toFixed(1)}
+          </div>
+          <div className="text-xs text-gray-500">Today&apos;s Hours</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold text-gray-900">
+            {totalWeekHours.toFixed(1)}
+          </div>
+          <div className="text-xs text-gray-500">Week Hours</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold text-gray-900">
+            {todayEntries.length + clockedIn.length}
+          </div>
+          <div className="text-xs text-gray-500">Today&apos;s Shifts</div>
+        </div>
+      </div>
+
       {/* ── Clock In Form ──────────────────────────────────────────────── */}
       <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-        <h2 className="font-semibold text-lg mb-4">Clock In</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-lg">Clock In</h2>
+          {isLocal && (
+            <button
+              onClick={() => setShowAddCrew(!showAddCrew)}
+              className="text-xs text-green-700 hover:text-green-800 font-medium"
+            >
+              {showAddCrew ? "Cancel" : "+ Add Crew Member"}
+            </button>
+          )}
+        </div>
+
+        {/* Add crew member form (local mode) */}
+        {showAddCrew && isLocal && (
+          <form onSubmit={handleAddCrew} className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-green-800 mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newCrewName}
+                  onChange={(e) => setNewCrewName(e.target.value)}
+                  placeholder="e.g. John Smith"
+                  className="w-full border border-green-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-green-800 mb-1">Role</label>
+                <select
+                  value={newCrewRole}
+                  onChange={(e) => setNewCrewRole(e.target.value)}
+                  className="w-full border border-green-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="Lead Installer">Lead Installer</option>
+                  <option value="Installer">Installer</option>
+                  <option value="Laborer">Laborer</option>
+                  <option value="Foreman">Foreman</option>
+                  <option value="Owner">Owner</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="submit"
+                  className="w-full bg-green-700 hover:bg-green-800 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors"
+                >
+                  Add to Crew
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+
         <form
           onSubmit={handleClockIn}
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
@@ -366,7 +606,7 @@ export default function HoursPage() {
           </h2>
           {clockedIn.length === 0 ? (
             <p className="text-sm text-gray-400">
-              Nobody clocked in right now.
+              Nobody clocked in right now. Use the form above to clock someone in.
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -400,7 +640,7 @@ export default function HoursPage() {
                         {formatTime(entry.clock_in)}
                       </td>
                       <td className="py-2.5">
-                        <span className="bg-amber-50 text-amber-700 text-xs font-mono px-2 py-0.5 rounded">
+                        <span className="bg-amber-50 text-amber-700 text-xs font-mono px-2 py-0.5 rounded animate-pulse">
                           {formatDuration(entry.clock_in)}
                         </span>
                       </td>
@@ -439,7 +679,7 @@ export default function HoursPage() {
           </p>
           {Object.keys(weeklySummary).length === 0 ? (
             <p className="text-sm text-gray-400">
-              No completed shifts this week.
+              No completed shifts this week yet.
             </p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -628,6 +868,15 @@ export default function HoursPage() {
             </div>
           )}
         </section>
+      )}
+
+      {/* ── Local Mode Indicator ──────────────────────────────────────── */}
+      {isLocal && (
+        <div className="text-center py-2">
+          <p className="text-xs text-gray-400">
+            Pay Clock is running locally — all data is saved to this device. Connect Supabase for cloud sync.
+          </p>
+        </div>
       )}
     </div>
   );
