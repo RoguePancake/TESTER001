@@ -193,7 +193,16 @@ function CrewTab() {
   const [editRole, setEditRole] = useState("");
 
   const fetchProfiles = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      const nowIso = new Date().toISOString();
+      setProfiles([
+        { id: "demo-1", full_name: "Alex Rivera", role: "foreman", is_active: true, created_at: nowIso },
+        { id: "demo-2", full_name: "Sam Brooks", role: "installer", is_active: true, created_at: nowIso },
+        { id: "demo-3", full_name: "Jordan Lee", role: "laborer", is_active: false, created_at: nowIso },
+      ]);
+      setLoading(false);
+      return;
+    }
     const { data } = await supabase
       .from("profiles")
       .select("*")
@@ -472,7 +481,16 @@ function JobSitesTab() {
   });
 
   const fetchSites = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      const nowIso = new Date().toISOString();
+      setSites([
+        { id: "site-1", name: "Rivera Backyard", address: "", client_name: "Rivera", status: "active", notes: "Residential install", created_at: nowIso },
+        { id: "site-2", name: "Lakeside HOA Dog Run", address: "", client_name: "Lakeside HOA", status: "active", notes: "Pet turf with extra infill", created_at: nowIso },
+        { id: "site-3", name: "Westfield Training Strip", address: "", client_name: "Westfield Sports", status: "completed", notes: "Completed last month", created_at: nowIso },
+      ]);
+      setLoading(false);
+      return;
+    }
     const { data } = await supabase
       .from("job_sites")
       .select("*")
@@ -1658,6 +1676,11 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-5">
+      {!supabase && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Demo mode: backend is not connected. Settings can be previewed locally; cloud save requires Supabase env vars.
+        </div>
+      )}
       <h1 className="text-2xl font-bold text-gray-900">⚙️ Settings</h1>
 
       {/* Tab bar */}
