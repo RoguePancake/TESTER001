@@ -7,6 +7,14 @@ import {
   type AppSetting,
   type JobSite,
 } from "@/lib/supabase";
+import {
+  applyDisplayPreferences,
+  loadDisplayPreferences,
+  normalizeDisplayPreferences,
+  saveDisplayPreferences,
+  type LayoutPreference,
+  type ThemePreference,
+} from "@/lib/display-preferences";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,8 +36,9 @@ interface HoursSettings {
 interface DisplaySettings {
   time_format: string;
   date_format: string;
-  theme: string;
+  theme: ThemePreference;
   accent_color: string;
+  layout_mode: LayoutPreference;
 }
 
 interface NotificationSettings {
@@ -999,27 +1008,57 @@ function DisplayTab() {
   const [settings, setSettings] = useState<DisplaySettings>({
     time_format: "12h",
     date_format: "MM/DD/YYYY",
-    theme: "light",
+    theme: "auto",
     accent_color: "green",
+    layout_mode: "mobile",
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     async function load() {
-      if (!supabase) return;
+      const localPrefs = loadDisplayPreferences();
+      setSettings((prev) => ({ ...prev, ...localPrefs }));
+
+      if (!supabase) {
+        applyDisplayPreferences(localPrefs);
+        return;
+      }
+
       const { data } = await supabase
         .from("app_settings")
         .select("*")
         .eq("key", "display")
         .single();
-      if (data) setSettings(data.value as unknown as DisplaySettings);
+
+      if (data) {
+        const normalized = normalizeDisplayPreferences(
+          data.value as Record<string, unknown>
+        );
+        setSettings((prev) => ({ ...prev, ...normalized }));
+        saveDisplayPreferences(normalized);
+        applyDisplayPreferences(normalized);
+      }
     }
     load();
   }, []);
 
   async function handleSave() {
-    if (!supabase) return;
+    saveDisplayPreferences({
+      theme: settings.theme,
+      layout_mode: settings.layout_mode,
+    });
+    applyDisplayPreferences({
+      theme: settings.theme,
+      layout_mode: settings.layout_mode,
+    });
+
+    if (!supabase) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      return;
+    }
+
     setSaving(true);
     await supabase
       .from("app_settings")
@@ -1081,14 +1120,33 @@ function DisplayTab() {
                 onChange={(e) =>
                   setSettings({
                     ...settings,
-                    theme: e.target.value,
+                    theme: e.target.value as ThemePreference,
                   })
                 }
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               >
                 <option value="light">Light</option>
-                <option value="dark">Dark (coming soon)</option>
+                <option value="dark">Dark (battery saver)</option>
                 <option value="auto">System Auto</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Layout Mode
+              </label>
+              <select
+                value={settings.layout_mode}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    layout_mode: e.target.value as LayoutPreference,
+                  })
+                }
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value="mobile">Mobile First (recommended)</option>
+                <option value="desktop">Desktop / Laptop</option>
+                <option value="auto">Auto by device</option>
               </select>
             </div>
             <div>
