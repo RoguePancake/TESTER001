@@ -156,7 +156,8 @@ export interface ActivityLog {
   created_at: string;
 }
 
-export interface Notification {
+// Named AppNotification to avoid shadowing the global DOM Notification type
+export interface AppNotification {
   id: string;
   user_id: string;
   type: string;

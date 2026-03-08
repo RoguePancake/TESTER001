@@ -15,7 +15,8 @@ export type NotificationType =
   | "crew_update"
   | "system_alert";
 
-export interface Notification {
+// Named AppNotification to avoid shadowing the global DOM Notification type
+export interface AppNotification {
   id: string;
   user_id: string;
   type: NotificationType;
@@ -45,7 +46,7 @@ export async function sendNotification(
 
 // ── Read ─────────────────────────────────────────────────────────────────────
 
-export async function getNotifications(userId: string, unreadOnly = false): Promise<Notification[]> {
+export async function getNotifications(userId: string, unreadOnly = false): Promise<AppNotification[]> {
   if (!supabase) return [];
   let query = supabase
     .from("notifications")
@@ -55,7 +56,7 @@ export async function getNotifications(userId: string, unreadOnly = false): Prom
     .limit(50);
   if (unreadOnly) query = query.eq("is_read", false);
   const { data } = await query;
-  return (data ?? []) as Notification[];
+  return (data ?? []) as AppNotification[];
 }
 
 export async function getUnreadCount(userId: string): Promise<number> {
