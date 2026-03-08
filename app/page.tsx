@@ -164,43 +164,74 @@ export default function Dashboard() {
   // ── data fetching ──────────────────────────────────────────────────────
 
   const fetchAll = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      const nowIso = new Date().toISOString();
+      setProfiles([
+        { id: "demo-1", full_name: "Alex Rivera", role: "Lead Installer", is_active: true, created_at: nowIso },
+        { id: "demo-2", full_name: "Sam Brooks", role: "Crew", is_active: true, created_at: nowIso },
+      ]);
+      setJobSites([
+        { id: "site-1", name: "Rivera Backyard", address: "", client_name: "Rivera", status: "active", notes: "", created_at: nowIso },
+      ]);
+      setNafEntries([
+        {
+          id: "naf-demo-1",
+          entry_type: "note",
+          body: "Demo mode active: add notes, deliveries, and hours without a live backend.",
+          job_name: "Rivera Backyard",
+          user_id: "demo-1",
+          ref_id: null,
+          ref_table: null,
+          metadata: {},
+          pinned: true,
+          created_at: nowIso,
+          profiles: { id: "demo-1", full_name: "Alex Rivera", role: "Lead Installer", is_active: true, created_at: nowIso },
+          naf_attachments: [],
+        },
+      ] as NafEntry[]);
+      setTimeEntries([]);
+      setDailyLogs([]);
+      setDeliveries([]);
+      setLoading(false);
+      return;
+    }
+
     const [profilesRes, nafRes, timeRes, logsRes, delivRes, sitesRes] =
       await Promise.all([
         supabase
           .from("profiles")
-          .select("*")
+          .select("id, full_name, role, is_active, created_at")
           .eq("is_active", true)
           .order("full_name"),
         supabase
           .from("naf_entries")
-          .select("*, naf_attachments(*), profiles(*)")
+          .select("id, entry_type, body, job_name, user_id, ref_id, ref_table, metadata, pinned, created_at, naf_attachments(*), profiles(*)")
           .order("created_at", { ascending: false })
           .limit(100),
         supabase
           .from("time_entries")
-          .select("*, profiles(full_name, role)")
+          .select("id, user_id, job_name, clock_in, clock_out, break_minutes, notes, created_at, profiles(full_name, role)")
           .order("clock_in", { ascending: false })
-          .limit(200),
+          .limit(120),
         supabase
           .from("daily_logs")
-          .select("*")
+          .select("id, log_date, job_name, weather_condition, work_summary, issues, materials_used, sqft_completed, created_at")
           .order("created_at", { ascending: false })
-          .limit(50),
+          .limit(30),
         supabase
           .from("deliveries")
-          .select("*")
+          .select("id, delivery_date, job_name, vendor, po_number, items_received, status, condition_notes, received_by, created_at")
           .order("created_at", { ascending: false })
-          .limit(50),
+          .limit(30),
         supabase
           .from("job_sites")
-          .select("*")
+          .select("id, name, address, client_name, status, notes, created_at")
           .eq("status", "active")
           .order("name"),
       ]);
     if (profilesRes.data) setProfiles(profilesRes.data);
-    if (nafRes.data) setNafEntries(nafRes.data);
-    if (timeRes.data) setTimeEntries(timeRes.data as TimeEntry[]);
+    if (nafRes.data) setNafEntries(nafRes.data as unknown as NafEntry[]);
+    if (timeRes.data) setTimeEntries(timeRes.data as unknown as TimeEntry[]);
     if (logsRes.data) setDailyLogs(logsRes.data);
     if (delivRes.data) setDeliveries(delivRes.data);
     if (sitesRes.data) setJobSites(sitesRes.data);
