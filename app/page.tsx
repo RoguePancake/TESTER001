@@ -1,323 +1,1081 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
-import { supabase, type TimeEntry, type DailyLog } from "@/lib/supabase";
+import {
+  supabase,
+  type NafEntry,
+  type Profile,
+  type TimeEntry,
+  type DailyLog,
+  type Delivery,
+  type JobSite,
+} from "@/lib/supabase";
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ── helpers ────────────────────────────────────────────────────────────────
 
-interface Delivery {
-  id: string;
-  delivery_date: string;
-  job_name: string | null;
-  vendor: string;
-  items_received: string;
-  status: string;
-  created_at: string;
-}
-
-interface FeedItem {
-  id: string;
-  type: "clock_in" | "clock_out" | "note" | "delivery";
-  time: string;   // ISO timestamp for sorting
-  label: string;
-  sublabel?: string;
-  badge?: string;
-  badgeColor?: string;
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function formatDuration(clockIn: string): string {
-  const totalMinutes = Math.floor((Date.now() - new Date(clockIn).getTime()) / 60000);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return `${h}h ${m}m`;
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function timeAgo(iso: string): string {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 }
 
-function formatLogDate(dateStr: string): string {
-  const [year, month, day] = dateStr.split("-").map(Number);
-  const d = new Date(year, month - 1, day);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+function formatDuration(ms: number) {
+  const hrs = Math.floor(ms / 3600000);
+  const mins = Math.floor((ms % 3600000) / 60000);
+  return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
 }
 
-const WEATHER_ICON: Record<string, string> = {
-  Sunny: "☀️", Cloudy: "⛅", Rainy: "🌧️",
-  Windy: "💨", Hot: "🌡️", Overcast: "🌥️",
+function formatTime(dateStr: string) {
+  return new Date(dateStr).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+const ENTRY_TYPE_CONFIG: Record<
+  string,
+  { icon: string; label: string; color: string; bg: string; border: string }
+> = {
+  general: {
+    icon: "💬",
+    label: "Note",
+    color: "text-gray-700",
+    bg: "bg-gray-50",
+    border: "border-gray-200",
+  },
+  note: {
+    icon: "📝",
+    label: "Field Note",
+    color: "text-blue-700",
+    bg: "bg-blue-50",
+    border: "border-blue-200",
+  },
+  delivery: {
+    icon: "📦",
+    label: "Delivery",
+    color: "text-amber-700",
+    bg: "bg-amber-50",
+    border: "border-amber-200",
+  },
+  clock_in: {
+    icon: "🟢",
+    label: "Clock In",
+    color: "text-green-700",
+    bg: "bg-green-50",
+    border: "border-green-200",
+  },
+  clock_out: {
+    icon: "🔴",
+    label: "Clock Out",
+    color: "text-red-700",
+    bg: "bg-red-50",
+    border: "border-red-200",
+  },
+  checklist: {
+    icon: "✅",
+    label: "Checklist",
+    color: "text-purple-700",
+    bg: "bg-purple-50",
+    border: "border-purple-200",
+  },
+  photo: {
+    icon: "📸",
+    label: "Photo",
+    color: "text-pink-700",
+    bg: "bg-pink-50",
+    border: "border-pink-200",
+  },
+  voice_memo: {
+    icon: "🎙️",
+    label: "Voice Memo",
+    color: "text-indigo-700",
+    bg: "bg-indigo-50",
+    border: "border-indigo-200",
+  },
+  file_upload: {
+    icon: "📎",
+    label: "File",
+    color: "text-teal-700",
+    bg: "bg-teal-50",
+    border: "border-teal-200",
+  },
 };
 
-const FEED_ICON: Record<FeedItem["type"], string> = {
-  clock_in: "🟢",
-  clock_out: "🔴",
-  note: "📝",
-  delivery: "📦",
+// ── types ──────────────────────────────────────────────────────────────────
+
+type FeedItem = {
+  id: string;
+  type: string;
+  icon: string;
+  title: string;
+  body: string;
+  job?: string;
+  time: string;
+  timestamp: number;
+  color: string;
+  bg: string;
+  border: string;
+  attachments?: { file_type: string; file_name: string; file_url: string }[];
+  pinned?: boolean;
+  user?: string;
 };
 
-// ── Page ──────────────────────────────────────────────────────────────────
+// ── main component ─────────────────────────────────────────────────────────
 
-export default function DashboardPage() {
-  const [clockedIn, setClockedIn] = useState<TimeEntry[]>([]);
-  const [recentLogs, setRecentLogs] = useState<DailyLog[]>([]);
-  const [recentDeliveries, setRecentDeliveries] = useState<Delivery[]>([]);
-  const [feed, setFeed] = useState<FeedItem[]>([]);
-  const [totalThisWeek, setTotalThisWeek] = useState(0);
+export default function Dashboard() {
+  // data
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [nafEntries, setNafEntries] = useState<NafEntry[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [jobSites, setJobSites] = useState<JobSite[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const now = new Date();
-  const dayLabel = now.toLocaleDateString([], {
-    weekday: "long", month: "long", day: "numeric",
-  });
+  // composer
+  const [composerText, setComposerText] = useState("");
+  const [composerType, setComposerType] = useState("general");
+  const [composerJob, setComposerJob] = useState("");
+  const [composerUser, setComposerUser] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [showTypeMenu, setShowTypeMenu] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [postSuccess, setPostSuccess] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay());
-    weekStart.setHours(0, 0, 0, 0);
+  // feed controls
+  const [feedFilter, setFeedFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
-    const since48h = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+  // clock-in panel
+  const [showClockIn, setShowClockIn] = useState(false);
+  const [clockJob, setClockJob] = useState("");
+  const [clockUser, setClockUser] = useState("");
+  const [clockNotes, setClockNotes] = useState("");
 
-    const [activeRes, logsRes, weekRes, recentEntriesRes, deliveriesRes] = await Promise.all([
-      supabase.from("time_entries").select("*, profiles(full_name, role)").is("clock_out", null).order("clock_in"),
-      supabase.from("daily_logs").select("*").order("log_date", { ascending: false }).order("created_at", { ascending: false }).limit(5),
-      supabase.from("time_entries").select("clock_in, clock_out, break_minutes").not("clock_out", "is", null).gte("clock_in", weekStart.toISOString()),
-      supabase.from("time_entries").select("*, profiles(full_name)").gte("created_at", since48h).order("clock_in", { ascending: false }).limit(30),
-      supabase.from("deliveries").select("*").order("created_at", { ascending: false }).limit(5),
-    ]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-    if (activeRes.data) setClockedIn(activeRes.data as TimeEntry[]);
-    if (logsRes.data) setRecentLogs(logsRes.data);
-    if (deliveriesRes.data) setRecentDeliveries(deliveriesRes.data as Delivery[]);
+  // ── data fetching ──────────────────────────────────────────────────────
 
-    if (weekRes.data) {
-      const hrs = weekRes.data.reduce((sum, e) => {
-        if (!e.clock_out) return sum;
-        const ms = new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime();
-        return sum + Math.max(0, ms / 3600000 - (e.break_minutes ?? 0) / 60);
-      }, 0);
-      setTotalThisWeek(Math.round(hrs * 10) / 10);
-    }
-
-    // Build activity feed
-    const feedItems: FeedItem[] = [];
-
-    if (recentEntriesRes.data) {
-      for (const e of recentEntriesRes.data as TimeEntry[]) {
-        const name = e.profiles?.full_name ?? "Someone";
-        feedItems.push({
-          id: `ci-${e.id}`,
-          type: "clock_in",
-          time: e.clock_in,
-          label: `${name} clocked in`,
-          sublabel: e.job_name ?? undefined,
-        });
-        if (e.clock_out) {
-          const ms = new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime();
-          const net = Math.max(0, ms / 3600000 - (e.break_minutes ?? 0) / 60);
-          feedItems.push({
-            id: `co-${e.id}`,
-            type: "clock_out",
-            time: e.clock_out,
-            label: `${name} clocked out`,
-            sublabel: `${net.toFixed(1)} hrs${e.job_name ? ` · ${e.job_name}` : ""}`,
-          });
-        }
-      }
-    }
-
-    if (logsRes.data) {
-      for (const log of logsRes.data) {
-        feedItems.push({
-          id: `note-${log.id}`,
-          type: "note",
-          time: log.created_at,
-          label: `Field note${log.job_name ? ` — ${log.job_name}` : ""}`,
-          sublabel: log.work_summary.slice(0, 80) + (log.work_summary.length > 80 ? "…" : ""),
-        });
-      }
-    }
-
-    if (deliveriesRes.data) {
-      for (const d of deliveriesRes.data as Delivery[]) {
-        feedItems.push({
-          id: `del-${d.id}`,
-          type: "delivery",
-          time: d.created_at,
-          label: `Delivery — ${d.vendor}`,
-          sublabel: d.items_received.slice(0, 80),
-          badge: d.status,
-          badgeColor:
-            d.status === "delivered" ? "bg-green-100 text-green-700"
-            : d.status === "partial" ? "bg-amber-100 text-amber-700"
-            : d.status === "damaged" ? "bg-red-100 text-red-700"
-            : "bg-gray-100 text-gray-500",
-        });
-      }
-    }
-
-    feedItems.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-    setFeed(feedItems.slice(0, 25));
+  const fetchAll = useCallback(async () => {
+    if (!supabase) return;
+    const [profilesRes, nafRes, timeRes, logsRes, delivRes, sitesRes] =
+      await Promise.all([
+        supabase
+          .from("profiles")
+          .select("*")
+          .eq("is_active", true)
+          .order("full_name"),
+        supabase
+          .from("naf_entries")
+          .select("*, naf_attachments(*), profiles(*)")
+          .order("created_at", { ascending: false })
+          .limit(100),
+        supabase
+          .from("time_entries")
+          .select("*, profiles(full_name, role)")
+          .order("clock_in", { ascending: false })
+          .limit(200),
+        supabase
+          .from("daily_logs")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(50),
+        supabase
+          .from("deliveries")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(50),
+        supabase
+          .from("job_sites")
+          .select("*")
+          .eq("status", "active")
+          .order("name"),
+      ]);
+    if (profilesRes.data) setProfiles(profilesRes.data);
+    if (nafRes.data) setNafEntries(nafRes.data);
+    if (timeRes.data) setTimeEntries(timeRes.data as TimeEntry[]);
+    if (logsRes.data) setDailyLogs(logsRes.data);
+    if (delivRes.data) setDeliveries(delivRes.data);
+    if (sitesRes.data) setJobSites(sitesRes.data);
     setLoading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+    fetchAll();
+    const iv = setInterval(fetchAll, 30000);
+    return () => clearInterval(iv);
+  }, [fetchAll]);
+
+  // ── computed values ────────────────────────────────────────────────────
+
+  const activeClocks = timeEntries.filter((t) => !t.clock_out);
+
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - now.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+
+  const weekHours = timeEntries
+    .filter((t) => t.clock_out && new Date(t.clock_in) >= weekStart)
+    .reduce((sum, t) => {
+      const ms =
+        new Date(t.clock_out!).getTime() - new Date(t.clock_in).getTime();
+      return sum + (ms / 3600000 - (t.break_minutes || 0) / 60);
+    }, 0);
+
+  const todayStr = now.toISOString().split("T")[0];
+  const todayDeliveries = deliveries.filter(
+    (d) => d.delivery_date === todayStr
+  );
+  const todayLogs = dailyLogs.filter((l) => l.log_date === todayStr);
+
+  // ── build unified feed ─────────────────────────────────────────────────
+
+  const buildFeed = useCallback((): FeedItem[] => {
+    const items: FeedItem[] = [];
+
+    // NAF entries (the primary source)
+    nafEntries.forEach((e) => {
+      const cfg =
+        ENTRY_TYPE_CONFIG[e.entry_type] || ENTRY_TYPE_CONFIG.general;
+      items.push({
+        id: `naf-${e.id}`,
+        type: e.entry_type,
+        icon: cfg.icon,
+        title: cfg.label,
+        body: e.body || "",
+        job: e.job_name || undefined,
+        time: timeAgo(e.created_at),
+        timestamp: new Date(e.created_at).getTime(),
+        color: cfg.color,
+        bg: cfg.bg,
+        border: cfg.border,
+        attachments: e.naf_attachments?.map((a) => ({
+          file_type: a.file_type,
+          file_name: a.file_name,
+          file_url: a.file_url,
+        })),
+        pinned: e.pinned,
+        user: e.profiles?.full_name,
+      });
+    });
+
+    // Time entries (clock in/out events)
+    timeEntries.forEach((t) => {
+      const name = t.profiles?.full_name || "Unknown";
+      items.push({
+        id: `ci-${t.id}`,
+        type: "clock_in",
+        icon: "🟢",
+        title: "Clock In",
+        body: `${name} clocked in${t.job_name ? ` at ${t.job_name}` : ""}`,
+        job: t.job_name || undefined,
+        time: timeAgo(t.clock_in),
+        timestamp: new Date(t.clock_in).getTime(),
+        color: "text-green-700",
+        bg: "bg-green-50",
+        border: "border-green-200",
+        user: name,
+      });
+      if (t.clock_out) {
+        const ms =
+          new Date(t.clock_out).getTime() - new Date(t.clock_in).getTime();
+        const net = Math.max(
+          0,
+          ms / 3600000 - (t.break_minutes || 0) / 60
+        );
+        items.push({
+          id: `co-${t.id}`,
+          type: "clock_out",
+          icon: "🔴",
+          title: "Clock Out",
+          body: `${name} clocked out — ${net.toFixed(1)} hrs${t.job_name ? ` at ${t.job_name}` : ""}`,
+          job: t.job_name || undefined,
+          time: timeAgo(t.clock_out),
+          timestamp: new Date(t.clock_out).getTime(),
+          color: "text-red-700",
+          bg: "bg-red-50",
+          border: "border-red-200",
+          user: name,
+        });
+      }
+    });
+
+    // Daily logs
+    dailyLogs.forEach((l) => {
+      items.push({
+        id: `log-${l.id}`,
+        type: "note",
+        icon: "📝",
+        title: `Field Note${l.job_name ? ` — ${l.job_name}` : ""}`,
+        body: l.work_summary,
+        job: l.job_name || undefined,
+        time: timeAgo(l.created_at),
+        timestamp: new Date(l.created_at).getTime(),
+        color: "text-blue-700",
+        bg: "bg-blue-50",
+        border: "border-blue-200",
+      });
+    });
+
+    // Deliveries
+    const statusIcons: Record<string, string> = {
+      delivered: "✅",
+      partial: "⚠️",
+      damaged: "🚨",
+      scheduled: "📅",
+      cancelled: "❌",
+    };
+    deliveries.forEach((d) => {
+      items.push({
+        id: `del-${d.id}`,
+        type: "delivery",
+        icon: statusIcons[d.status] || "📦",
+        title: `Delivery — ${d.vendor}`,
+        body: d.items_received,
+        job: d.job_name || undefined,
+        time: timeAgo(d.created_at),
+        timestamp: new Date(d.created_at).getTime(),
+        color: "text-amber-700",
+        bg: "bg-amber-50",
+        border: "border-amber-200",
+      });
+    });
+
+    // Sort: pinned first, then by time desc
+    items.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return b.timestamp - a.timestamp;
+    });
+
+    return items;
+  }, [nafEntries, timeEntries, dailyLogs, deliveries]);
+
+  const allFeed = buildFeed();
+
+  const filteredFeed = allFeed.filter((item) => {
+    if (feedFilter !== "all" && item.type !== feedFilter) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return (
+        item.body.toLowerCase().includes(q) ||
+        item.title.toLowerCase().includes(q) ||
+        (item.job && item.job.toLowerCase().includes(q)) ||
+        (item.user && item.user.toLowerCase().includes(q))
+      );
+    }
+    return true;
+  });
+
+  // ── post entry ─────────────────────────────────────────────────────────
+
+  async function handlePost() {
+    if (!supabase || (!composerText.trim() && attachments.length === 0))
+      return;
+    setPosting(true);
+    try {
+      // Create NAF entry
+      const { data: entry, error } = await supabase
+        .from("naf_entries")
+        .insert({
+          entry_type: composerType,
+          body: composerText.trim() || null,
+          job_name: composerJob || null,
+          user_id: composerUser || null,
+          metadata: {},
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Cross-post to legacy tables for backwards compatibility
+      if (composerType === "note" && composerText.trim()) {
+        await supabase.from("daily_logs").insert({
+          work_summary: composerText.trim(),
+          job_name: composerJob || null,
+        });
+      } else if (composerType === "delivery" && composerText.trim()) {
+        await supabase.from("deliveries").insert({
+          vendor: "Via NAF",
+          items_received: composerText.trim(),
+          status: "delivered",
+          job_name: composerJob || null,
+        });
+      }
+
+      // Handle file attachments (base64 data URIs for MVP)
+      if (entry && attachments.length > 0) {
+        for (const file of attachments) {
+          const reader = new FileReader();
+          const dataUrl = await new Promise<string>((resolve) => {
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+          let fileType = "other";
+          if (file.type.startsWith("image/")) fileType = "photo";
+          else if (file.type.startsWith("video/")) fileType = "video";
+          else if (file.type.startsWith("audio/")) fileType = "voice_memo";
+          else fileType = "document";
+
+          await supabase.from("naf_attachments").insert({
+            entry_id: entry.id,
+            file_type: fileType,
+            file_name: file.name,
+            file_url: dataUrl,
+            file_size: file.size,
+            mime_type: file.type,
+          });
+        }
+      }
+
+      // Reset composer
+      setComposerText("");
+      setComposerType("general");
+      setComposerJob("");
+      setComposerUser("");
+      setAttachments([]);
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+      setPostSuccess(true);
+      setTimeout(() => setPostSuccess(false), 2000);
+      await fetchAll();
+    } catch (err) {
+      console.error("Post error:", err);
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  // ── clock in/out ───────────────────────────────────────────────────────
+
+  async function handleClockIn() {
+    if (!supabase || !clockUser) return;
+    await supabase.from("time_entries").insert({
+      user_id: clockUser,
+      job_name: clockJob || null,
+      notes: clockNotes || null,
+      clock_in: new Date().toISOString(),
+    });
+
+    // Also create NAF entry so it shows in the feed
+    const profile = profiles.find((p) => p.id === clockUser);
+    await supabase.from("naf_entries").insert({
+      entry_type: "clock_in",
+      body: `${profile?.full_name || "Crew member"} clocked in${clockJob ? ` at ${clockJob}` : ""}${clockNotes ? ` — ${clockNotes}` : ""}`,
+      job_name: clockJob || null,
+      user_id: clockUser,
+    });
+
+    setShowClockIn(false);
+    setClockJob("");
+    setClockUser("");
+    setClockNotes("");
+    await fetchAll();
+  }
+
+  async function handleClockOut(entryId: string) {
+    if (!supabase) return;
+    const entry = timeEntries.find((t) => t.id === entryId);
+    await supabase
+      .from("time_entries")
+      .update({ clock_out: new Date().toISOString() })
+      .eq("id", entryId);
+
+    if (entry) {
+      const profile = profiles.find((p) => p.id === entry.user_id);
+      const ms = Date.now() - new Date(entry.clock_in).getTime();
+      await supabase.from("naf_entries").insert({
+        entry_type: "clock_out",
+        body: `${profile?.full_name || "Crew member"} clocked out — ${formatDuration(ms)}${entry.job_name ? ` from ${entry.job_name}` : ""}`,
+        job_name: entry.job_name || null,
+        user_id: entry.user_id,
+      });
+    }
+    await fetchAll();
+  }
+
+  // ── textarea auto-resize ──────────────────────────────────────────────
+
+  function handleTextareaChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setComposerText(e.target.value);
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
+  }
+
+  function handleFileSelect(accept?: string) {
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = accept || "*/*";
+      fileInputRef.current.click();
+    }
+  }
+
+  function handleFilesAdded(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files)
+      setAttachments((prev) => [...prev, ...Array.from(e.target.files!)]);
+    e.target.value = "";
+  }
+
+  // ── render ─────────────────────────────────────────────────────────────
+
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-400">
-        Loading dashboard…
+        Loading dashboard...
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">{dayLabel}</h1>
-        <p className="text-gray-500 mt-1 text-sm">Field Operations Command Center</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            NAF Dashboard
+          </h1>
+          <p className="text-sm text-gray-500">{today}</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowClockIn(!showClockIn)}
+            className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
+          >
+            {activeClocks.length > 0
+              ? `⏱ ${activeClocks.length} On Clock`
+              : "⏱ Clock In"}
+          </button>
+          <Link
+            href="/settings"
+            className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition-colors flex items-center"
+          >
+            ⚙️
+          </Link>
+        </div>
       </div>
 
-      {/* ── Stat cards ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <div className="bg-green-700 text-white rounded-xl p-4 shadow-sm">
-          <div className="text-3xl font-bold">{clockedIn.length}</div>
-          <div className="text-green-100 text-sm mt-1">On the clock now</div>
+      {/* ── Stats Strip ────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-brand-600 text-white rounded-xl p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold">{activeClocks.length}</div>
+          <div className="text-xs opacity-80">On Clock</div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-          <div className="text-3xl font-bold text-gray-900">{totalThisWeek}</div>
-          <div className="text-gray-400 text-sm mt-1">Crew-hours this week</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm col-span-2 sm:col-span-1">
-          <div className="text-3xl font-bold text-gray-900">{recentDeliveries.length}</div>
-          <div className="text-gray-400 text-sm mt-1">Recent deliveries</div>
-        </div>
-      </div>
-
-      {/* ── Quick Actions ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-4 gap-2">
-        <Link href="/hours"
-          className="flex flex-col items-center justify-center gap-1 bg-green-700 hover:bg-green-800 text-white rounded-xl py-3 font-semibold text-xs transition-colors shadow-sm">
-          <span className="text-xl">⏱</span> Clock In
-        </Link>
-        <Link href="/notepad"
-          className="flex flex-col items-center justify-center gap-1 bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 rounded-xl py-3 font-semibold text-xs transition-colors shadow-sm">
-          <span className="text-xl">📝</span> Note
-        </Link>
-        <Link href="/notepad?tab=deliveries"
-          className="flex flex-col items-center justify-center gap-1 bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 rounded-xl py-3 font-semibold text-xs transition-colors shadow-sm">
-          <span className="text-xl">📦</span> Delivery
-        </Link>
-        <Link href="/tools"
-          className="flex flex-col items-center justify-center gap-1 bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 rounded-xl py-3 font-semibold text-xs transition-colors shadow-sm">
-          <span className="text-xl">🔧</span> Tools
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* ── Currently Clocked In ──────────────────────────────────────── */}
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">On The Clock</h2>
-            <Link href="/hours" className="text-xs text-green-700 hover:underline">Manage →</Link>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold text-gray-900">
+            {weekHours.toFixed(1)}
           </div>
-          {clockedIn.length === 0 ? (
-            <p className="text-sm text-gray-400">Nobody clocked in right now.</p>
-          ) : (
-            <ul className="divide-y divide-gray-50">
-              {clockedIn.map((entry) => (
-                <li key={entry.id} className="py-2.5 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium">{entry.profiles?.full_name ?? "Unknown"}</div>
-                    <div className="text-xs text-gray-400">
-                      {entry.job_name ? `📍 ${entry.job_name}` : "No job assigned"} · since {formatTime(entry.clock_in)}
+          <div className="text-xs text-gray-500">Week Hours</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold text-gray-900">
+            {todayDeliveries.length}
+          </div>
+          <div className="text-xs text-gray-500">Deliveries Today</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold text-gray-900">
+            {todayLogs.length}
+          </div>
+          <div className="text-xs text-gray-500">Notes Today</div>
+        </div>
+      </div>
+
+      {/* ── Clock-In Quick Panel ───────────────────────────────────────── */}
+      {showClockIn && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-green-800">
+              Quick Clock In / Out
+            </h3>
+            <button
+              onClick={() => setShowClockIn(false)}
+              className="text-green-600 hover:text-green-800 text-sm"
+            >
+              Close ×
+            </button>
+          </div>
+
+          {/* Active clocks list */}
+          {activeClocks.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-green-700">
+                Currently Clocked In ({activeClocks.length})
+              </p>
+              {activeClocks.map((t) => {
+                const dur =
+                  Date.now() - new Date(t.clock_in).getTime();
+                return (
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-green-100"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-500">●</span>
+                      <span className="font-medium text-sm">
+                        {t.profiles?.full_name || "—"}
+                      </span>
+                      {t.job_name && (
+                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                          {t.job_name}
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-500 font-mono">
+                        {formatDuration(dur)}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        since {formatTime(t.clock_in)}
+                      </span>
                     </div>
+                    <button
+                      onClick={() => handleClockOut(t.id)}
+                      className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-lg hover:bg-red-200 font-medium"
+                    >
+                      Clock Out
+                    </button>
                   </div>
-                  <span className="bg-amber-50 text-amber-700 text-xs font-mono px-2 py-0.5 rounded shrink-0">
-                    {formatDuration(entry.clock_in)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+                );
+              })}
+            </div>
           )}
-        </section>
 
-        {/* ── Recent Field Notes ─────────────────────────────────────────── */}
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Recent Notes</h2>
-            <Link href="/notepad" className="text-xs text-green-700 hover:underline">All notes →</Link>
+          {/* New clock-in form */}
+          <div className="border-t border-green-200 pt-3">
+            <p className="text-xs font-medium text-green-700 mb-2">
+              New Clock In
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+              <div>
+                <label className="text-xs text-green-700 font-medium">
+                  Crew Member *
+                </label>
+                <select
+                  value={clockUser}
+                  onChange={(e) => setClockUser(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5"
+                >
+                  <option value="">Select...</option>
+                  {profiles
+                    .filter(
+                      (p) =>
+                        !activeClocks.some(
+                          (a) => a.user_id === p.id
+                        )
+                    )
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.full_name} ({p.role})
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-green-700 font-medium">
+                  Job Site
+                </label>
+                <input
+                  value={clockJob}
+                  onChange={(e) => setClockJob(e.target.value)}
+                  placeholder="Job name..."
+                  className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5"
+                  list="job-sites-list"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-green-700 font-medium">
+                  Notes
+                </label>
+                <input
+                  value={clockNotes}
+                  onChange={(e) => setClockNotes(e.target.value)}
+                  placeholder="Optional notes..."
+                  className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={handleClockIn}
+                  disabled={!clockUser}
+                  className="w-full px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-green-700"
+                >
+                  ✅ Clock In
+                </button>
+              </div>
+            </div>
           </div>
-          {recentLogs.length === 0 ? (
-            <p className="text-sm text-gray-400">No field notes yet.</p>
-          ) : (
-            <ul className="divide-y divide-gray-50">
-              {recentLogs.map((log) => (
-                <li key={log.id} className="py-2.5">
-                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                    <span className="text-xs font-semibold text-gray-500">{formatLogDate(log.log_date)}</span>
-                    {log.job_name && <span className="bg-blue-50 text-blue-600 text-xs px-1.5 py-0.5 rounded">{log.job_name}</span>}
-                    {log.weather_condition && <span className="text-xs">{WEATHER_ICON[log.weather_condition]}</span>}
-                    {log.sqft_completed && <span className="bg-green-50 text-green-600 text-xs px-1.5 py-0.5 rounded">{log.sqft_completed.toLocaleString()} sqft</span>}
-                  </div>
-                  <p className="text-sm text-gray-700 line-clamp-2">{log.work_summary}</p>
-                </li>
-              ))}
-            </ul>
+        </div>
+      )}
+
+      {/* ── NAF Composer (Entry-First) ─────────────────────────────────── */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        {/* Type selector bar */}
+        <div className="flex items-center gap-1 px-3 pt-3 pb-1 border-b border-gray-100 flex-wrap">
+          <div className="relative">
+            <button
+              onClick={() => setShowTypeMenu(!showTypeMenu)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                ENTRY_TYPE_CONFIG[composerType]?.bg || "bg-gray-100"
+              } ${
+                ENTRY_TYPE_CONFIG[composerType]?.color ||
+                "text-gray-700"
+              }`}
+            >
+              {ENTRY_TYPE_CONFIG[composerType]?.icon}{" "}
+              {ENTRY_TYPE_CONFIG[composerType]?.label || "Note"} ▾
+            </button>
+            {showTypeMenu && (
+              <div className="absolute top-full left-0 mt-1 bg-white border rounded-lg shadow-lg z-20 py-1 w-48">
+                {Object.entries(ENTRY_TYPE_CONFIG).map(
+                  ([key, cfg]) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setComposerType(key);
+                        setShowTypeMenu(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
+                        composerType === key
+                          ? "bg-gray-50 font-medium"
+                          : ""
+                      }`}
+                    >
+                      <span>{cfg.icon}</span>
+                      <span>{cfg.label}</span>
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Job tag */}
+          <input
+            value={composerJob}
+            onChange={(e) => setComposerJob(e.target.value)}
+            placeholder="Job site..."
+            className="px-2 py-1.5 text-xs border rounded-lg bg-gray-50 w-32"
+            list="job-sites-list"
+          />
+
+          {/* User selector */}
+          <select
+            value={composerUser}
+            onChange={(e) => setComposerUser(e.target.value)}
+            className="px-2 py-1.5 text-xs border rounded-lg bg-gray-50"
+          >
+            <option value="">Posted by...</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.full_name}
+              </option>
+            ))}
+          </select>
+
+          {postSuccess && (
+            <span className="text-xs text-green-600 font-medium ml-auto">
+              ✅ Posted!
+            </span>
           )}
-        </section>
+        </div>
+
+        {/* Text input area */}
+        <textarea
+          ref={textareaRef}
+          value={composerText}
+          onChange={handleTextareaChange}
+          placeholder="What's happening on the jobsite? Log a note, delivery, update, anything..."
+          className="w-full px-4 py-3 text-sm resize-none focus:outline-none min-h-[80px]"
+          rows={3}
+        />
+
+        {/* Attachment previews */}
+        {attachments.length > 0 && (
+          <div className="px-4 pb-2 flex gap-2 flex-wrap">
+            {attachments.map((f, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs"
+              >
+                <span>
+                  {f.type.startsWith("image/")
+                    ? "📸"
+                    : f.type.startsWith("video/")
+                    ? "🎬"
+                    : f.type.startsWith("audio/")
+                    ? "🎙️"
+                    : "📎"}
+                </span>
+                <span className="max-w-[100px] truncate">
+                  {f.name}
+                </span>
+                <span className="text-gray-400">
+                  ({(f.size / 1024).toFixed(0)}KB)
+                </span>
+                <button
+                  onClick={() =>
+                    setAttachments((prev) =>
+                      prev.filter((_, j) => j !== i)
+                    )
+                  }
+                  className="text-gray-400 hover:text-red-500 ml-1"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Action bar */}
+        <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50">
+          <div className="flex gap-1">
+            <button
+              onClick={() => handleFileSelect("image/*")}
+              className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
+              title="Attach Photo"
+            >
+              📸
+              <span className="sr-only">Photo</span>
+            </button>
+            <button
+              onClick={() => handleFileSelect("video/*")}
+              className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
+              title="Attach Video"
+            >
+              🎬
+              <span className="sr-only">Video</span>
+            </button>
+            <button
+              onClick={() => handleFileSelect("audio/*")}
+              className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
+              title="Voice Memo"
+            >
+              🎙️
+              <span className="sr-only">Voice Memo</span>
+            </button>
+            <button
+              onClick={() => handleFileSelect()}
+              className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
+              title="Upload File"
+            >
+              📎
+              <span className="sr-only">Upload</span>
+            </button>
+          </div>
+          <button
+            onClick={handlePost}
+            disabled={
+              posting ||
+              (!composerText.trim() && attachments.length === 0)
+            }
+            className="px-5 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium disabled:opacity-40 hover:bg-brand-700 transition-colors"
+          >
+            {posting ? "Posting..." : "Post to Feed"}
+          </button>
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          multiple
+          onChange={handleFilesAdded}
+        />
+      </div>
+
+      {/* ── Quick Actions Strip ────────────────────────────────────────── */}
+      <div className="grid grid-cols-5 gap-2">
+        <Link
+          href="/hours"
+          className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
+        >
+          <div className="text-xl">⏱</div>
+          <div className="text-xs text-gray-600 mt-1">Hours</div>
+        </Link>
+        <Link
+          href="/notepad"
+          className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
+        >
+          <div className="text-xl">📋</div>
+          <div className="text-xs text-gray-600 mt-1">Notepad</div>
+        </Link>
+        <Link
+          href="/notepad?tab=deliveries"
+          className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
+        >
+          <div className="text-xl">📦</div>
+          <div className="text-xs text-gray-600 mt-1">Deliveries</div>
+        </Link>
+        <Link
+          href="/tools"
+          className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
+        >
+          <div className="text-xl">🔧</div>
+          <div className="text-xs text-gray-600 mt-1">Tools</div>
+        </Link>
+        <Link
+          href="/settings"
+          className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
+        >
+          <div className="text-xl">⚙️</div>
+          <div className="text-xs text-gray-600 mt-1">Settings</div>
+        </Link>
+      </div>
+
+      {/* ── Feed Filter & Search ───────────────────────────────────────── */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex gap-1 flex-wrap flex-1">
+          {[
+            { key: "all", label: "All" },
+            { key: "general", label: "💬 Notes" },
+            { key: "note", label: "📝 Field" },
+            { key: "clock_in", label: "🟢 In" },
+            { key: "clock_out", label: "🔴 Out" },
+            { key: "delivery", label: "📦 Deliv" },
+            { key: "photo", label: "📸 Photo" },
+            { key: "voice_memo", label: "🎙️ Voice" },
+            { key: "file_upload", label: "📎 Files" },
+          ].map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setFeedFilter(f.key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                feedFilter === f.key
+                  ? "bg-brand-600 text-white"
+                  : "bg-white border text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search feed..."
+          className="border rounded-lg px-3 py-1.5 text-sm w-44"
+        />
       </div>
 
       {/* ── Activity Feed ──────────────────────────────────────────────── */}
-      <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-        <h2 className="font-semibold mb-4">Activity Feed</h2>
-        {feed.length === 0 ? (
-          <p className="text-sm text-gray-400">No activity yet — clock in a crew member or submit a note to see it here.</p>
-        ) : (
-          <ol className="relative border-l border-gray-200 ml-3 space-y-0">
-            {feed.map((item) => (
-              <li key={item.id} className="mb-4 ml-5">
-                <span className="absolute -left-3 flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 text-sm">
-                  {FEED_ICON[item.type]}
-                </span>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">{item.label}</p>
-                    {item.sublabel && <p className="text-xs text-gray-400 mt-0.5">{item.sublabel}</p>}
-                    {item.badge && (
-                      <span className={`mt-1 inline-block text-xs font-medium px-2 py-0.5 rounded-full ${item.badgeColor}`}>
-                        {item.badge}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-400 shrink-0">{timeAgo(item.time)}</span>
-                </div>
-              </li>
-            ))}
-          </ol>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-gray-800">
+            Activity Feed
+            <span className="text-xs text-gray-400 font-normal ml-2">
+              {filteredFeed.length} items
+            </span>
+          </h2>
+          <button
+            onClick={fetchAll}
+            className="text-xs text-brand-600 hover:text-brand-700"
+          >
+            ↻ Refresh
+          </button>
+        </div>
+
+        {filteredFeed.length === 0 && (
+          <div className="text-center py-12 text-gray-400 bg-white rounded-xl border border-gray-200">
+            <div className="text-4xl mb-2">📋</div>
+            <p className="text-sm">
+              {searchQuery || feedFilter !== "all"
+                ? "No matching entries found."
+                : "No activity yet. Post something to get started!"}
+            </p>
+          </div>
         )}
-      </section>
+
+        {filteredFeed.map((item) => (
+          <div
+            key={item.id}
+            className={`${item.bg} border ${item.border} rounded-xl p-4 hover:shadow-sm transition-shadow`}
+          >
+            <div className="flex items-start gap-3">
+              <div className="text-xl flex-shrink-0 mt-0.5">
+                {item.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={`text-sm font-semibold ${item.color}`}
+                  >
+                    {item.title}
+                  </span>
+                  {item.pinned && (
+                    <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">
+                      📌 Pinned
+                    </span>
+                  )}
+                  {item.job && (
+                    <span className="text-xs bg-white/60 border px-2 py-0.5 rounded text-gray-600">
+                      {item.job}
+                    </span>
+                  )}
+                  {item.user && (
+                    <span className="text-xs text-gray-500">
+                      by {item.user}
+                    </span>
+                  )}
+                  <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
+                    {item.time}
+                  </span>
+                </div>
+                {item.body && (
+                  <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
+                    {item.body}
+                  </p>
+                )}
+                {/* Attachment chips */}
+                {item.attachments &&
+                  item.attachments.length > 0 && (
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {item.attachments.map((att, i) => (
+                        <div
+                          key={i}
+                          className="bg-white/60 border rounded-lg px-2 py-1 text-xs flex items-center gap-1 cursor-pointer hover:bg-white"
+                        >
+                          <span>
+                            {att.file_type === "photo"
+                              ? "📸"
+                              : att.file_type === "video"
+                              ? "🎬"
+                              : att.file_type ===
+                                "voice_memo"
+                              ? "🎙️"
+                              : "📎"}
+                          </span>
+                          <span className="truncate max-w-[120px]">
+                            {att.file_name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Datalist for job sites autocomplete */}
+      <datalist id="job-sites-list">
+        {jobSites.map((s) => (
+          <option key={s.id} value={s.name} />
+        ))}
+      </datalist>
     </div>
   );
 }
