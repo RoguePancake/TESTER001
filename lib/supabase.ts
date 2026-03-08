@@ -11,12 +11,12 @@ export const supabase = supabaseUrl && supabaseAnonKey
 
 export interface Profile {
   id: string;
-  auth_id: string | null;      // links to Supabase auth.users
-  company_id: string | null;
+  auth_id?: string | null;      // links to Supabase auth.users
+  company_id?: string | null;
   full_name: string;
-  email: string | null;
+  email?: string | null;
   role: string;
-  avatar_url: string | null;
+  avatar_url?: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -94,14 +94,14 @@ export interface AppSetting {
 export interface JobSite {
   id: string;
   name: string;
-  address: string | null;
-  client_name: string | null;
+  address?: string | null;
+  client_name?: string | null;
   status: string;
-  notes: string | null;
-  company_id: string | null;
-  assigned_crew_id: string | null;
-  created_by: string | null;
-  updated_at: string | null;
+  notes?: string | null;
+  company_id?: string | null;
+  assigned_crew_id?: string | null;
+  created_by?: string | null;
+  updated_at?: string | null;
   created_at: string;
 }
 

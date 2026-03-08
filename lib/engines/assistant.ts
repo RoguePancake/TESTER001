@@ -74,8 +74,13 @@ export async function buildJobsiteContext(jobName: string): Promise<JobsiteConte
   const recentNotes = (logs ?? []).map((l) => l.work_summary).filter(Boolean);
   const recentIssues = (logs ?? []).map((l) => l.issues).filter(Boolean) as string[];
   const materials = (logs ?? []).map((l) => l.materials_used).filter(Boolean) as string[];
-  const activeCrew = ((clocked ?? []) as Array<{ profiles: { full_name: string } | null }>)
-    .map((e) => e.profiles?.full_name)
+  const activeCrew = (clocked ?? [])
+    .map((e: Record<string, unknown>) => {
+      const p = e.profiles;
+      if (Array.isArray(p)) return p[0]?.full_name as string | undefined;
+      if (p && typeof p === "object") return (p as { full_name?: string }).full_name;
+      return undefined;
+    })
     .filter(Boolean) as string[];
 
   return {

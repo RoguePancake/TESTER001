@@ -36,12 +36,12 @@
   }
 
   :root[data-theme="dark"] .bg-white {
-    @apply bg-slate-900 !important;
+    @apply !bg-slate-900;
   }
 
   :root[data-theme="dark"] .bg-gray-50,
   :root[data-theme="dark"] .bg-gray-100 {
-    @apply bg-slate-900 !important;
+    @apply !bg-slate-900;
   }
 
   :root[data-theme="dark"] .text-gray-900,
@@ -50,12 +50,12 @@
   :root[data-theme="dark"] .text-gray-600,
   :root[data-theme="dark"] .text-gray-500,
   :root[data-theme="dark"] .text-gray-400 {
-    @apply text-slate-100 !important;
+    @apply !text-slate-100;
   }
 
   :root[data-theme="dark"] .border-gray-200,
   :root[data-theme="dark"] .border-gray-300 {
-    @apply border-slate-700 !important;
+    @apply !border-slate-700;
   }
 
   :root[data-layout-mode="desktop"] .app-bottom-nav {

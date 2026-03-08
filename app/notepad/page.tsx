@@ -736,6 +736,12 @@ function DeliveriesTab() {
 // TAB: CHECKLISTS
 // ══════════════════════════════════════════════════════════════════════════
 
+const CHECKLIST_LABELS: Record<ChecklistType, string> = {
+  site_prep: "Site Prep",
+  safety: "Safety",
+  final_walkthrough: "Final Walkthrough",
+};
+
 function ChecklistsTab() {
   const [activeType, setActiveType] = useState<ChecklistType>("site_prep");
   const [jobSites, setJobSites] = useState<JobSite[]>([]);
@@ -785,7 +791,7 @@ function ChecklistsTab() {
     // Post checklist completion to NAF
     await supabase.from("naf_entries").insert({
       entry_type: "checklist",
-      body: `${LABELS[activeType]} checklist completed for ${jobName.trim()} — ${completedCount}/${items.length} items checked${checkedBy ? ` by ${checkedBy}` : ""}`,
+      body: `${CHECKLIST_LABELS[activeType]} checklist completed for ${jobName.trim()} — ${completedCount}/${items.length} items checked${checkedBy ? ` by ${checkedBy}` : ""}`,
       job_name: jobName.trim(),
       metadata: {
         checklist_type: activeType,
@@ -803,9 +809,9 @@ function ChecklistsTab() {
   }
 
   const LABELS: Record<ChecklistType, string> = {
-    site_prep: "🏗️ Site Prep",
-    safety: "🦺 Safety",
-    final_walkthrough: "✅ Final Walkthrough",
+    site_prep: `🏗️ ${CHECKLIST_LABELS.site_prep}`,
+    safety: `🦺 ${CHECKLIST_LABELS.safety}`,
+    final_walkthrough: `✅ ${CHECKLIST_LABELS.final_walkthrough}`,
   };
 
   return (
