@@ -4,9 +4,16 @@ import { useEffect, useState, useCallback } from "react";
 import {
   supabase,
   type Profile,
-  type AppSetting,
   type JobSite,
 } from "@/lib/supabase";
+import {
+  applyDisplayPreferences,
+  loadDisplayPreferences,
+  normalizeDisplayPreferences,
+  saveDisplayPreferences,
+  type LayoutPreference,
+  type ThemePreference,
+} from "@/lib/display-preferences";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,8 +35,9 @@ interface HoursSettings {
 interface DisplaySettings {
   time_format: string;
   date_format: string;
-  theme: string;
+  theme: ThemePreference;
   accent_color: string;
+  layout_mode: LayoutPreference;
 }
 
 interface NotificationSettings {
@@ -184,7 +192,16 @@ function CrewTab() {
   const [editRole, setEditRole] = useState("");
 
   const fetchProfiles = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      const nowIso = new Date().toISOString();
+      setProfiles([
+        { id: "demo-1", full_name: "Alex Rivera", role: "foreman", is_active: true, created_at: nowIso },
+        { id: "demo-2", full_name: "Sam Brooks", role: "installer", is_active: true, created_at: nowIso },
+        { id: "demo-3", full_name: "Jordan Lee", role: "laborer", is_active: false, created_at: nowIso },
+      ]);
+      setLoading(false);
+      return;
+    }
     const { data } = await supabase
       .from("profiles")
       .select("*")
@@ -463,7 +480,16 @@ function JobSitesTab() {
   });
 
   const fetchSites = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      const nowIso = new Date().toISOString();
+      setSites([
+        { id: "site-1", name: "Rivera Backyard", address: "", client_name: "Rivera", status: "active", notes: "Residential install", created_at: nowIso },
+        { id: "site-2", name: "Lakeside HOA Dog Run", address: "", client_name: "Lakeside HOA", status: "active", notes: "Pet turf with extra infill", created_at: nowIso },
+        { id: "site-3", name: "Westfield Training Strip", address: "", client_name: "Westfield Sports", status: "completed", notes: "Completed last month", created_at: nowIso },
+      ]);
+      setLoading(false);
+      return;
+    }
     const { data } = await supabase
       .from("job_sites")
       .select("*")
@@ -999,27 +1025,57 @@ function DisplayTab() {
   const [settings, setSettings] = useState<DisplaySettings>({
     time_format: "12h",
     date_format: "MM/DD/YYYY",
-    theme: "light",
+    theme: "auto",
     accent_color: "green",
+    layout_mode: "mobile",
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     async function load() {
-      if (!supabase) return;
+      const localPrefs = loadDisplayPreferences();
+      setSettings((prev) => ({ ...prev, ...localPrefs }));
+
+      if (!supabase) {
+        applyDisplayPreferences(localPrefs);
+        return;
+      }
+
       const { data } = await supabase
         .from("app_settings")
         .select("*")
         .eq("key", "display")
         .single();
-      if (data) setSettings(data.value as unknown as DisplaySettings);
+
+      if (data) {
+        const normalized = normalizeDisplayPreferences(
+          data.value as Record<string, unknown>
+        );
+        setSettings((prev) => ({ ...prev, ...normalized }));
+        saveDisplayPreferences(normalized);
+        applyDisplayPreferences(normalized);
+      }
     }
     load();
   }, []);
 
   async function handleSave() {
-    if (!supabase) return;
+    saveDisplayPreferences({
+      theme: settings.theme,
+      layout_mode: settings.layout_mode,
+    });
+    applyDisplayPreferences({
+      theme: settings.theme,
+      layout_mode: settings.layout_mode,
+    });
+
+    if (!supabase) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      return;
+    }
+
     setSaving(true);
     await supabase
       .from("app_settings")
@@ -1081,14 +1137,33 @@ function DisplayTab() {
                 onChange={(e) =>
                   setSettings({
                     ...settings,
-                    theme: e.target.value,
+                    theme: e.target.value as ThemePreference,
                   })
                 }
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               >
                 <option value="light">Light</option>
-                <option value="dark">Dark (coming soon)</option>
+                <option value="dark">Dark (battery saver)</option>
                 <option value="auto">System Auto</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Layout Mode
+              </label>
+              <select
+                value={settings.layout_mode}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    layout_mode: e.target.value as LayoutPreference,
+                  })
+                }
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value="mobile">Mobile First (recommended)</option>
+                <option value="desktop">Desktop / Laptop</option>
+                <option value="auto">Auto by device</option>
               </select>
             </div>
             <div>
@@ -1600,6 +1675,11 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-5">
+      {!supabase && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Demo mode: backend is not connected. Settings can be previewed locally; cloud save requires Supabase env vars.
+        </div>
+      )}
       <h1 className="text-2xl font-bold text-gray-900">⚙️ Settings</h1>
 
       {/* Tab bar */}

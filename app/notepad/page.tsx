@@ -107,7 +107,21 @@ function NotesTab() {
   const [filterText, setFilterText] = useState("");
 
   const fetchLogs = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      const today = new Date().toISOString().split("T")[0];
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+      const nowIso = new Date().toISOString();
+      setJobSites([
+        { id: "site-1", name: "Rivera Backyard", address: null, client_name: "Rivera", status: "active", notes: null, created_at: nowIso },
+        { id: "site-2", name: "Lakeside HOA Dog Run", address: null, client_name: "Lakeside HOA", status: "active", notes: null, created_at: nowIso },
+      ]);
+      setLogs([
+        { id: "log-1", log_date: today, job_name: "Rivera Backyard", weather_condition: "Sunny", work_summary: "Final turf roll-out and seam brush-in completed.", issues: null, materials_used: "Infill silica, seam tape", sqft_completed: 620, created_at: nowIso },
+        { id: "log-2", log_date: yesterday, job_name: "Lakeside HOA Dog Run", weather_condition: "Cloudy", work_summary: "Sub-base grading and compaction done.", issues: "Low spot near drain corrected", materials_used: "Class II base", sqft_completed: 1100, created_at: nowIso },
+      ]);
+      setLoading(false);
+      return;
+    }
     const [logsRes, sitesRes] = await Promise.all([
       supabase
         .from("daily_logs")
@@ -408,7 +422,20 @@ function DeliveriesTab() {
   const [filterStatus, setFilterStatus] = useState("all");
 
   const fetchDeliveries = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      const today = new Date().toISOString().split("T")[0];
+      const nowIso = new Date().toISOString();
+      setJobSites([
+        { id: "site-1", name: "Rivera Backyard", address: null, client_name: "Rivera", status: "active", notes: null, created_at: nowIso },
+        { id: "site-2", name: "Lakeside HOA Dog Run", address: null, client_name: "Lakeside HOA", status: "active", notes: null, created_at: nowIso },
+      ]);
+      setDeliveries([
+        { id: "del-1", delivery_date: today, job_name: "Rivera Backyard", vendor: "SYNLawn", po_number: "PO-2026-042", items_received: "2 turf rolls + seam tape", status: "delivered", condition_notes: null, received_by: "Alex Rivera", created_at: nowIso },
+        { id: "del-2", delivery_date: today, job_name: "Lakeside HOA Dog Run", vendor: "BaseCo", po_number: null, items_received: "5 tons Class II base", status: "scheduled", condition_notes: "ETA 2:30 PM", received_by: null, created_at: nowIso },
+      ]);
+      setLoading(false);
+      return;
+    }
     const [delivRes, sitesRes] = await Promise.all([
       supabase
         .from("deliveries")
@@ -982,6 +1009,11 @@ export default function NotepadPage() {
 
   return (
     <div className="space-y-5">
+      {!supabase && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Demo mode: Supabase is not connected. You can review full Notepad/Delivery layout with sample records.
+        </div>
+      )}
       <h1 className="text-2xl font-bold text-gray-900">📋 Notepad</h1>
 
       <div className="flex gap-2">

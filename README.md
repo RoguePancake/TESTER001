@@ -1785,3 +1785,23 @@ Proprietary — All rights reserved.
 -----
 
 *Built for the field, by someone who knows what it's like to run a crew, juggle deliveries, and still need to know what's happening on three job sites at once.*
+
+## Resolving GitHub Merge Conflicts Quickly
+
+If your PR shows **"This branch has conflicts"**, sync it to the latest base branch before merging:
+
+```bash
+npm run sync:main
+```
+
+This command runs `scripts/sync-main.sh`, which:
+1. fetches `origin/main`
+2. rebases your current branch on top of it
+3. asks you to resolve any conflicts if they exist
+4. force-pushes the rebased branch with `--force-with-lease`
+
+If your base branch is not `main`, run:
+
+```bash
+bash scripts/sync-main.sh <base-branch>
+```
