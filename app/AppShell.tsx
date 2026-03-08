@@ -25,6 +25,7 @@ const ALL_NAV_LINKS: NavLink[] = [
   { href: "/notepad",   label: "Notepad",      icon: "📋" },
   { href: "/tools",     label: "Tools",        icon: "🔧" },
   { href: "/settings",  label: "Settings",     icon: "⚙️" },
+  { href: "/admin",     label: "Admin",        icon: "🛠", minRole: "company_owner" },
 ];
 
 function getNavLinks(role: UserRole | null): NavLink[] {
