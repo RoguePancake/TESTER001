@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import {
   supabase,
   type Profile,
-  type AppSetting,
   type JobSite,
 } from "@/lib/supabase";
 import {
