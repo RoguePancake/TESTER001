@@ -8,8 +8,8 @@ import {
 } from "@/lib/display-preferences";
 
 const navLinks = [
-  { href: "/", label: "Dashboard", icon: "⚡" },
-  { href: "/hours", label: "Hours", icon: "⏱" },
+  { href: "/", label: "Field Office", icon: "⚡" },
+  { href: "/hours", label: "Pay Clock", icon: "⏱" },
   { href: "/notepad", label: "Notepad", icon: "📋" },
   { href: "/tools", label: "Tools", icon: "🔧" },
   { href: "/settings", label: "Settings", icon: "⚙️" },

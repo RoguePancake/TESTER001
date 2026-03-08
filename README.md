@@ -136,7 +136,7 @@ User stories define what each role needs to accomplish. These drive feature prio
 ### Personnel Management
 
 - **Crew Roster** — Full employee directory with roles, certifications, hourly rates, emergency contacts.
-- **Time Tracking Dashboard** — Real-time view of who's clocked in, where, and for how long. Weekly/biweekly payroll summaries.
+- **Pay Clock** — Real-time view of who's clocked in, where, and for how long. Weekly/biweekly payroll summaries.
 - **Crew Assignment Engine** — Drag-and-drop crew assignment to jobs. Skill-matching suggestions (e.g., seaming specialist on complex layouts).
 
 ### Job Site Management
@@ -565,7 +565,7 @@ COMMENT ON COLUMN deliveries.items IS
 │  skip login │  │  └──────────────┘     └─────────────────┘
 └─────────────┘  │
                  │  ┌──────────────┐
-                 └─▶│  Dashboard   │
+                 └─▶│  Field Office   │
                     │  (role-based)│
                     └──────────────┘
 ```
@@ -674,7 +674,7 @@ POST   /rest/v1/photos                             → log photo metadata
 
 ## Module Breakdown
 
-### Module 1: Command Center (Dashboard)
+### Module 1: Command Center (Field Office)
 
 The home screen. Everything at a glance.
 
@@ -729,7 +729,7 @@ The home screen. Everything at a glance.
 
 **Components:**
 
-- `InventoryDashboard` — Current stock levels with alerts.
+- `InventoryField Office` — Current stock levels with alerts.
 - `UsageLogger` — Log materials used per job.
 - `WasteTracker` — Track and reduce waste over time.
 - `ReorderAlerts` — Push notification when stock hits minimum threshold.
@@ -891,7 +891,7 @@ Two distinct note types serve different needs. Both feed the Turf AI data pipeli
 
 ### Field Note (Mid-Shift) User Flow
 
-**Access:** Dashboard FAB (floating action button), any Job Card → Notes tab, or from within Delivery Receive flow
+**Access:** Field Office FAB (floating action button), any Job Card → Notes tab, or from within Delivery Receive flow
 
 **Screen — New Field Note (bottom sheet, not full screen):**
 1. Large text area: placeholder "What's happening?" — max 2000 chars, character counter shown at 1500+
@@ -1040,7 +1040,7 @@ For each expected item, show one row:
 
 ### Photo Capture Flow
 
-**Access Points:** Dashboard FAB, Job Card → Photos tab, within Delivery Receive (auto-categorizes as 'delivery'), within Field Note creation
+**Access Points:** Field Office FAB, Job Card → Photos tab, within Delivery Receive (auto-categorizes as 'delivery'), within Field Note creation
 
 **Camera Screen:**
 - Full-screen viewfinder
@@ -1085,7 +1085,7 @@ Development is broken into four phases. Each phase ships a working, testable inc
 | Job list screen (filterable) | Dev | |
 | Job card: create + view + edit | Dev | |
 | Job stage update (tap to advance) | Dev | |
-| Today's Dashboard (jobs, timers, weather strip) | Dev | Static layout OK for now |
+| Today's Field Office (jobs, timers, weather strip) | Dev | Static layout OK for now |
 | Morning briefing Edge Function + display | Dev | |
 | GPS clock-in verification (geofence or distance check) | Dev | |
 | End-to-end test: login → clock in → update job → clock out | Dev | Manual QA |
@@ -1249,7 +1249,7 @@ All of the following must be true before Day 1:
 | TC-01: Clock-in | Each crew member opens app, selects job, taps Clock In | GPS acquired <15s; entry in timesheet | No GPS fallback shown, or entry not saved |
 | TC-02: GPS accuracy | QA notes app's reported accuracy vs. known site address | Location within 500m of site | >500m off with no warning |
 | TC-03: Stage check | Foreman verifies correct starting stage | Stage matches pre-configured value | Wrong stage or fails to load |
-| TC-04: Dashboard | Owner opens dashboard, sees today's jobs and clocked-in crew | Data visible in <5 seconds | Blank or stale data |
+| TC-04: Field Office | Owner opens dashboard, sees today's jobs and clocked-in crew | Data visible in <5 seconds | Blank or stale data |
 
 **Day 1 — Mid-Morning (10:00 AM)**
 
@@ -1686,7 +1686,7 @@ jobsite-ops-hq/
 │   │   ├── signup.tsx
 │   │   └── _layout.tsx
 │   ├── (tabs)/                   # Main tab navigator
-│   │   ├── index.tsx             # Dashboard / Command Center
+│   │   ├── index.tsx             # Field Office / Command Center
 │   │   ├── timeclock.tsx         # Clock in/out + timesheet
 │   │   ├── jobs/
 │   │   │   ├── index.tsx         # Job list
@@ -1698,7 +1698,7 @@ jobsite-ops-hq/
 │
 ├── components/                   # Reusable UI components
 │   ├── ui/                       # Generic (Button, Card, Input, Modal)
-│   ├── dashboard/                # Dashboard-specific components
+│   ├── dashboard/                # Field Office-specific components
 │   ├── timeclock/                # Clock in/out components
 │   ├── jobs/                     # Job card, stage tracker, etc.
 │   ├── deliveries/               # Delivery form, list items

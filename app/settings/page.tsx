@@ -874,7 +874,7 @@ function HoursSettingsTab() {
     <div className="space-y-6">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h3 className="font-semibold text-lg mb-4">
-          Hours & Payroll Settings
+          Pay Clock Settings
         </h3>
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -986,7 +986,7 @@ function HoursSettingsTab() {
               disabled={saving}
               className="bg-green-700 hover:bg-green-800 text-white font-semibold px-6 py-2.5 rounded-lg text-sm disabled:opacity-50 transition-colors"
             >
-              {saving ? "Saving..." : "Save Hours Settings"}
+              {saving ? "Saving..." : "Save Pay Clock Settings"}
             </button>
             {saved && (
               <span className="text-green-600 text-sm font-medium">
@@ -1641,7 +1641,7 @@ const TABS = [
   { id: "company", label: "🏢 Company", component: CompanyTab },
   { id: "crew", label: "👥 Crew", component: CrewTab },
   { id: "jobsites", label: "📍 Job Sites", component: JobSitesTab },
-  { id: "hours", label: "⏱ Hours", component: HoursSettingsTab },
+  { id: "hours", label: "⏱ Pay Clock", component: HoursSettingsTab },
   { id: "display", label: "🎨 Display", component: DisplayTab },
   { id: "notifications", label: "🔔 Alerts", component: NotificationsTab },
   { id: "naf", label: "📋 Feed", component: NafSettingsTab },

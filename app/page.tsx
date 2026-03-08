@@ -128,7 +128,7 @@ type FeedItem = {
 
 // ── main component ─────────────────────────────────────────────────────────
 
-export default function Dashboard() {
+export default function FieldOffice() {
   // data
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [nafEntries, setNafEntries] = useState<NafEntry[]>([]);
@@ -566,7 +566,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-400">
-        Loading dashboard...
+        Loading Field Office...
       </div>
     );
   }
@@ -577,7 +577,7 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            NAF Dashboard
+            Field Office
           </h1>
           <p className="text-sm text-gray-500">{today}</p>
         </div>
@@ -934,7 +934,7 @@ export default function Dashboard() {
           className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
         >
           <div className="text-xl">⏱</div>
-          <div className="text-xs text-gray-600 mt-1">Hours</div>
+          <div className="text-xs text-gray-600 mt-1">Pay Clock</div>
         </Link>
         <Link
           href="/notepad"
