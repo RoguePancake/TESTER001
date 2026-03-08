@@ -78,7 +78,28 @@ export default function HoursPage() {
   const [viewMode, setViewMode] = useState<"active" | "weekly" | "timesheet">("active");
 
   const fetchData = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+      const yesterdayIn = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+      const yesterdayOut = new Date(now.getTime() - 16 * 60 * 60 * 1000).toISOString();
+      setProfiles([
+        { id: "demo-1", full_name: "Alex Rivera", role: "foreman", is_active: true, created_at: nowIso },
+        { id: "demo-2", full_name: "Sam Brooks", role: "installer", is_active: true, created_at: nowIso },
+      ]);
+      setJobSites([
+        { id: "site-1", name: "Rivera Backyard", address: null, client_name: "Rivera", status: "active", notes: null, created_at: nowIso },
+        { id: "site-2", name: "Lakeside HOA Dog Run", address: null, client_name: "Lakeside HOA", status: "active", notes: null, created_at: nowIso },
+      ]);
+      setEntries([
+        { id: "entry-1", user_id: "demo-1", job_name: "Rivera Backyard", clock_in: twoHoursAgo, clock_out: null, break_minutes: 0, notes: "Base grading and compact", created_at: nowIso, profiles: { id: "demo-1", full_name: "Alex Rivera", role: "foreman", is_active: true, created_at: nowIso } },
+        { id: "entry-2", user_id: "demo-2", job_name: "Lakeside HOA Dog Run", clock_in: yesterdayIn, clock_out: yesterdayOut, break_minutes: 30, notes: "Infill pass + seam inspection", created_at: nowIso, profiles: { id: "demo-2", full_name: "Sam Brooks", role: "installer", is_active: true, created_at: nowIso } },
+      ]);
+      setLoading(false);
+      return;
+    }
+
     const [profilesRes, entriesRes, sitesRes] = await Promise.all([
       supabase
         .from("profiles")
@@ -97,7 +118,7 @@ export default function HoursPage() {
         .order("name"),
     ]);
     if (profilesRes.data) setProfiles(profilesRes.data);
-    if (entriesRes.data) setEntries(entriesRes.data as TimeEntry[]);
+    if (entriesRes.data) setEntries(entriesRes.data as unknown as TimeEntry[]);
     if (sitesRes.data) setJobSites(sitesRes.data);
     setLoading(false);
   }, []);
@@ -261,6 +282,11 @@ export default function HoursPage() {
 
   return (
     <div className="space-y-6">
+      {!supabase && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Demo mode: Supabase is not connected. Data below is sample data for full UI preview.
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">
           ⏱ Hours & Time Cards
