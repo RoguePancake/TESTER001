@@ -12,6 +12,30 @@ import {
   type JobSite,
 } from "@/lib/supabase";
 
+const isLocal = !supabase;
+
+// ── localStorage helpers for local mode ────────────────────────────────────
+const LS_NAF = "naf_local_entries";
+const LS_TIME = "payclock_entries";
+const LS_NOTES = "notepad_logs";
+const LS_DELIVERIES = "notepad_deliveries";
+const LS_CREW = "jobsite_crew";
+const LS_SITES = "jobsite_sites";
+
+function getLS<T>(key: string): T[] {
+  if (typeof window === "undefined") return [];
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : []; }
+  catch { return []; }
+}
+function setLS(key: string, data: unknown[]) {
+  localStorage.setItem(key, JSON.stringify(data));
+}
+function nextLocalId(): string {
+  const c = parseInt(localStorage.getItem("naf_counter") || "0", 10) + 1;
+  localStorage.setItem("naf_counter", String(c));
+  return `local-${c}`;
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 function timeAgo(dateStr: string) {
@@ -164,34 +188,25 @@ export default function FieldOffice() {
   // ── data fetching ──────────────────────────────────────────────────────
 
   const fetchAll = useCallback(async () => {
-    if (!supabase) {
+    if (isLocal) {
       const nowIso = new Date().toISOString();
-      setProfiles([
+      // Load crew from settings or use defaults
+      const localCrew = getLS<Profile>(LS_CREW);
+      const crewProfiles = localCrew.length > 0 ? localCrew : [
         { id: "demo-1", full_name: "Alex Rivera", role: "Lead Installer", is_active: true, created_at: nowIso },
         { id: "demo-2", full_name: "Sam Brooks", role: "Crew", is_active: true, created_at: nowIso },
-      ]);
-      setJobSites([
+      ];
+      setProfiles(crewProfiles);
+
+      const localSites = getLS<JobSite>(LS_SITES);
+      setJobSites(localSites.length > 0 ? localSites : [
         { id: "site-1", name: "Rivera Backyard", address: "", client_name: "Rivera", status: "active", notes: "", created_at: nowIso },
       ]);
-      setNafEntries([
-        {
-          id: "naf-demo-1",
-          entry_type: "note",
-          body: "Demo mode active: add notes, deliveries, and hours without a live backend.",
-          job_name: "Rivera Backyard",
-          user_id: "demo-1",
-          ref_id: null,
-          ref_table: null,
-          metadata: {},
-          pinned: true,
-          created_at: nowIso,
-          profiles: { id: "demo-1", full_name: "Alex Rivera", role: "Lead Installer", is_active: true, created_at: nowIso },
-          naf_attachments: [],
-        },
-      ] as NafEntry[]);
-      setTimeEntries([]);
-      setDailyLogs([]);
-      setDeliveries([]);
+
+      setNafEntries(getLS<NafEntry>(LS_NAF));
+      setTimeEntries(getLS<TimeEntry>(LS_TIME));
+      setDailyLogs(getLS<DailyLog>(LS_NOTES));
+      setDeliveries(getLS<Delivery>(LS_DELIVERIES));
       setLoading(false);
       return;
     }
@@ -409,62 +424,112 @@ export default function FieldOffice() {
   // ── post entry ─────────────────────────────────────────────────────────
 
   async function handlePost() {
-    if (!supabase || (!composerText.trim() && attachments.length === 0))
-      return;
+    if (!composerText.trim() && attachments.length === 0) return;
     setPosting(true);
     try {
-      // Create NAF entry
-      const { data: entry, error } = await supabase
-        .from("naf_entries")
-        .insert({
+      if (isLocal) {
+        // Local mode: save to localStorage
+        const newEntry: NafEntry = {
+          id: nextLocalId(),
           entry_type: composerType,
           body: composerText.trim() || null,
           job_name: composerJob || null,
           user_id: composerUser || null,
+          ref_id: null,
+          ref_table: null,
           metadata: {},
-        })
-        .select()
-        .single();
+          pinned: false,
+          created_at: new Date().toISOString(),
+          profiles: composerUser ? profiles.find(p => p.id === composerUser) : undefined,
+          naf_attachments: [],
+        };
+        const existing = getLS<NafEntry>(LS_NAF);
+        existing.unshift(newEntry);
+        setLS(LS_NAF, existing);
 
-      if (error) throw error;
-
-      // Cross-post to legacy tables for backwards compatibility
-      if (composerType === "note" && composerText.trim()) {
-        await supabase.from("daily_logs").insert({
-          work_summary: composerText.trim(),
-          job_name: composerJob || null,
-        });
-      } else if (composerType === "delivery" && composerText.trim()) {
-        await supabase.from("deliveries").insert({
-          vendor: "Via NAF",
-          items_received: composerText.trim(),
-          status: "delivered",
-          job_name: composerJob || null,
-        });
-      }
-
-      // Handle file attachments (base64 data URIs for MVP)
-      if (entry && attachments.length > 0) {
-        for (const file of attachments) {
-          const reader = new FileReader();
-          const dataUrl = await new Promise<string>((resolve) => {
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
+        // Cross-post to local notes/deliveries
+        if (composerType === "note" && composerText.trim()) {
+          const notes = getLS<DailyLog>(LS_NOTES);
+          notes.unshift({
+            id: nextLocalId(),
+            log_date: new Date().toISOString().split("T")[0],
+            job_name: composerJob || null,
+            weather_condition: null,
+            work_summary: composerText.trim(),
+            issues: null,
+            materials_used: null,
+            sqft_completed: null,
+            created_at: new Date().toISOString(),
           });
-          let fileType = "other";
-          if (file.type.startsWith("image/")) fileType = "photo";
-          else if (file.type.startsWith("video/")) fileType = "video";
-          else if (file.type.startsWith("audio/")) fileType = "voice_memo";
-          else fileType = "document";
-
-          await supabase.from("naf_attachments").insert({
-            entry_id: entry.id,
-            file_type: fileType,
-            file_name: file.name,
-            file_url: dataUrl,
-            file_size: file.size,
-            mime_type: file.type,
+          setLS(LS_NOTES, notes);
+        } else if (composerType === "delivery" && composerText.trim()) {
+          const delivs = getLS<Delivery>(LS_DELIVERIES);
+          delivs.unshift({
+            id: nextLocalId(),
+            delivery_date: new Date().toISOString().split("T")[0],
+            job_name: composerJob || null,
+            vendor: "Via Feed",
+            po_number: null,
+            items_received: composerText.trim(),
+            status: "delivered",
+            condition_notes: null,
+            received_by: null,
+            created_at: new Date().toISOString(),
           });
+          setLS(LS_DELIVERIES, delivs);
+        }
+      } else {
+        // Supabase mode
+        const { data: entry, error } = await supabase
+          .from("naf_entries")
+          .insert({
+            entry_type: composerType,
+            body: composerText.trim() || null,
+            job_name: composerJob || null,
+            user_id: composerUser || null,
+            metadata: {},
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        if (composerType === "note" && composerText.trim()) {
+          await supabase.from("daily_logs").insert({
+            work_summary: composerText.trim(),
+            job_name: composerJob || null,
+          });
+        } else if (composerType === "delivery" && composerText.trim()) {
+          await supabase.from("deliveries").insert({
+            vendor: "Via NAF",
+            items_received: composerText.trim(),
+            status: "delivered",
+            job_name: composerJob || null,
+          });
+        }
+
+        if (entry && attachments.length > 0) {
+          for (const file of attachments) {
+            const reader = new FileReader();
+            const dataUrl = await new Promise<string>((resolve) => {
+              reader.onload = () => resolve(reader.result as string);
+              reader.readAsDataURL(file);
+            });
+            let fileType = "other";
+            if (file.type.startsWith("image/")) fileType = "photo";
+            else if (file.type.startsWith("video/")) fileType = "video";
+            else if (file.type.startsWith("audio/")) fileType = "voice_memo";
+            else fileType = "document";
+
+            await supabase.from("naf_attachments").insert({
+              entry_id: entry.id,
+              file_type: fileType,
+              file_name: file.name,
+              file_url: dataUrl,
+              file_size: file.size,
+              mime_type: file.type,
+            });
+          }
         }
       }
 
@@ -488,22 +553,52 @@ export default function FieldOffice() {
   // ── clock in/out ───────────────────────────────────────────────────────
 
   async function handleClockIn() {
-    if (!supabase || !clockUser) return;
-    await supabase.from("time_entries").insert({
-      user_id: clockUser,
-      job_name: clockJob || null,
-      notes: clockNotes || null,
-      clock_in: new Date().toISOString(),
-    });
-
-    // Also create NAF entry so it shows in the feed
+    if (!clockUser) return;
     const profile = profiles.find((p) => p.id === clockUser);
-    await supabase.from("naf_entries").insert({
-      entry_type: "clock_in",
-      body: `${profile?.full_name || "Crew member"} clocked in${clockJob ? ` at ${clockJob}` : ""}${clockNotes ? ` — ${clockNotes}` : ""}`,
-      job_name: clockJob || null,
-      user_id: clockUser,
-    });
+    const nowIso = new Date().toISOString();
+
+    if (isLocal) {
+      const entries = getLS<TimeEntry>(LS_TIME);
+      entries.unshift({
+        id: nextLocalId(),
+        user_id: clockUser,
+        job_name: clockJob || null,
+        clock_in: nowIso,
+        clock_out: null,
+        break_minutes: 0,
+        notes: clockNotes || null,
+        created_at: nowIso,
+        profiles: profile,
+      });
+      setLS(LS_TIME, entries);
+
+      const naf = getLS<NafEntry>(LS_NAF);
+      naf.unshift({
+        id: nextLocalId(),
+        entry_type: "clock_in",
+        body: `${profile?.full_name || "Crew member"} clocked in${clockJob ? ` at ${clockJob}` : ""}${clockNotes ? ` — ${clockNotes}` : ""}`,
+        job_name: clockJob || null,
+        user_id: clockUser,
+        ref_id: null, ref_table: null, metadata: {}, pinned: false,
+        created_at: nowIso,
+        profiles: profile,
+        naf_attachments: [],
+      } as NafEntry);
+      setLS(LS_NAF, naf);
+    } else {
+      await supabase.from("time_entries").insert({
+        user_id: clockUser,
+        job_name: clockJob || null,
+        notes: clockNotes || null,
+        clock_in: nowIso,
+      });
+      await supabase.from("naf_entries").insert({
+        entry_type: "clock_in",
+        body: `${profile?.full_name || "Crew member"} clocked in${clockJob ? ` at ${clockJob}` : ""}${clockNotes ? ` — ${clockNotes}` : ""}`,
+        job_name: clockJob || null,
+        user_id: clockUser,
+      });
+    }
 
     setShowClockIn(false);
     setClockJob("");
@@ -513,22 +608,48 @@ export default function FieldOffice() {
   }
 
   async function handleClockOut(entryId: string) {
-    if (!supabase) return;
     const entry = timeEntries.find((t) => t.id === entryId);
-    await supabase
-      .from("time_entries")
-      .update({ clock_out: new Date().toISOString() })
-      .eq("id", entryId);
+    const nowIso = new Date().toISOString();
 
-    if (entry) {
-      const profile = profiles.find((p) => p.id === entry.user_id);
-      const ms = Date.now() - new Date(entry.clock_in).getTime();
-      await supabase.from("naf_entries").insert({
-        entry_type: "clock_out",
-        body: `${profile?.full_name || "Crew member"} clocked out — ${formatDuration(ms)}${entry.job_name ? ` from ${entry.job_name}` : ""}`,
-        job_name: entry.job_name || null,
-        user_id: entry.user_id,
-      });
+    if (isLocal) {
+      const entries = getLS<TimeEntry>(LS_TIME).map(t =>
+        t.id === entryId ? { ...t, clock_out: nowIso } : t
+      );
+      setLS(LS_TIME, entries);
+
+      if (entry) {
+        const profile = profiles.find((p) => p.id === entry.user_id);
+        const ms = Date.now() - new Date(entry.clock_in).getTime();
+        const naf = getLS<NafEntry>(LS_NAF);
+        naf.unshift({
+          id: nextLocalId(),
+          entry_type: "clock_out",
+          body: `${profile?.full_name || "Crew member"} clocked out — ${formatDuration(ms)}${entry.job_name ? ` from ${entry.job_name}` : ""}`,
+          job_name: entry.job_name || null,
+          user_id: entry.user_id,
+          ref_id: null, ref_table: null, metadata: {}, pinned: false,
+          created_at: nowIso,
+          profiles: profile,
+          naf_attachments: [],
+        } as NafEntry);
+        setLS(LS_NAF, naf);
+      }
+    } else {
+      await supabase
+        .from("time_entries")
+        .update({ clock_out: nowIso })
+        .eq("id", entryId);
+
+      if (entry) {
+        const profile = profiles.find((p) => p.id === entry.user_id);
+        const ms = Date.now() - new Date(entry.clock_in).getTime();
+        await supabase.from("naf_entries").insert({
+          entry_type: "clock_out",
+          body: `${profile?.full_name || "Crew member"} clocked out — ${formatDuration(ms)}${entry.job_name ? ` from ${entry.job_name}` : ""}`,
+          job_name: entry.job_name || null,
+          user_id: entry.user_id,
+        });
+      }
     }
     await fetchAll();
   }

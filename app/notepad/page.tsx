@@ -8,7 +8,52 @@ import {
   type JobSite,
 } from "@/lib/supabase";
 
-// ── Constants ─────────────────────────────────────────────────────────────
+// ── localStorage keys ─────────────────────────────────────────────────
+const LS_NOTES = "notepad_logs";
+const LS_DELIVERIES = "notepad_deliveries";
+const LS_SITES = "jobsite_sites";
+const LS_COUNTER = "notepad_counter";
+
+function nextLocalId(): string {
+  if (typeof window === "undefined") return `local-${Date.now()}`;
+  const c = parseInt(localStorage.getItem(LS_COUNTER) || "0", 10) + 1;
+  localStorage.setItem(LS_COUNTER, String(c));
+  return `local-${c}`;
+}
+
+function getLocalNotes(): DailyLog[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LS_NOTES);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveLocalNotes(logs: DailyLog[]) {
+  localStorage.setItem(LS_NOTES, JSON.stringify(logs));
+}
+
+function getLocalDeliveries(): Delivery[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LS_DELIVERIES);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveLocalDeliveries(deliveries: Delivery[]) {
+  localStorage.setItem(LS_DELIVERIES, JSON.stringify(deliveries));
+}
+
+function getLocalSites(): JobSite[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LS_SITES);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+// ── Constants ─────────────────────────────────────────────────────────
 
 const WEATHER_OPTIONS = ["Sunny", "Cloudy", "Rainy", "Windy", "Hot", "Overcast"];
 const WEATHER_ICON: Record<string, string> = {
@@ -82,6 +127,8 @@ function formatDate(dateStr: string) {
   });
 }
 
+const isLocal = !supabase;
+
 // ══════════════════════════════════════════════════════════════════════════
 // TAB: NOTES
 // ══════════════════════════════════════════════════════════════════════════
@@ -107,7 +154,12 @@ function NotesTab() {
   const [filterText, setFilterText] = useState("");
 
   const fetchLogs = useCallback(async () => {
-    if (!supabase) return;
+    if (isLocal) {
+      setLogs(getLocalNotes());
+      setJobSites(getLocalSites());
+      setLoading(false);
+      return;
+    }
     const [logsRes, sitesRes] = await Promise.all([
       supabase
         .from("daily_logs")
@@ -132,38 +184,54 @@ function NotesTab() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!workSummary.trim() || !supabase) return;
+    if (!workSummary.trim()) return;
     setSubmitting(true);
 
-    // Save to daily_logs
-    await supabase.from("daily_logs").insert({
-      log_date: logDate,
-      job_name: jobName || null,
-      weather_condition: weather || null,
-      work_summary: workSummary.trim(),
-      issues: issues.trim() || null,
-      materials_used: materials.trim() || null,
-      sqft_completed: sqft ? parseInt(sqft, 10) : null,
-    });
-
-    // Cross-post to NAF
-    await supabase.from("naf_entries").insert({
-      entry_type: "note",
-      body: workSummary.trim() + (issues.trim() ? `\n\n⚠️ Issues: ${issues.trim()}` : ""),
-      job_name: jobName || null,
-      metadata: {
-        weather: weather || null,
-        sqft: sqft ? parseInt(sqft, 10) : null,
-        materials: materials.trim() || null,
+    if (isLocal) {
+      const newLog: DailyLog = {
+        id: nextLocalId(),
         log_date: logDate,
-      },
-    });
+        job_name: jobName || null,
+        weather_condition: weather || null,
+        work_summary: workSummary.trim(),
+        issues: issues.trim() || null,
+        materials_used: materials.trim() || null,
+        sqft_completed: sqft ? parseInt(sqft, 10) : null,
+        created_at: new Date().toISOString(),
+      };
+      const existing = getLocalNotes();
+      existing.unshift(newLog);
+      saveLocalNotes(existing);
+    } else {
+      await supabase.from("daily_logs").insert({
+        log_date: logDate,
+        job_name: jobName || null,
+        weather_condition: weather || null,
+        work_summary: workSummary.trim(),
+        issues: issues.trim() || null,
+        materials_used: materials.trim() || null,
+        sqft_completed: sqft ? parseInt(sqft, 10) : null,
+      });
+
+      // Cross-post to NAF
+      await supabase.from("naf_entries").insert({
+        entry_type: "note",
+        body: workSummary.trim() + (issues.trim() ? `\n\n⚠️ Issues: ${issues.trim()}` : ""),
+        job_name: jobName || null,
+        metadata: {
+          weather: weather || null,
+          sqft: sqft ? parseInt(sqft, 10) : null,
+          materials: materials.trim() || null,
+          log_date: logDate,
+        },
+      });
+    }
 
     setWorkSummary("");
     setIssues("");
     setMaterials("");
     setSqft("");
-    setSuccessMsg("Note saved & posted to NAF!");
+    setSuccessMsg("Note saved!");
     setTimeout(() => setSuccessMsg(""), 3000);
     fetchLogs();
     setSubmitting(false);
@@ -188,23 +256,23 @@ function NotesTab() {
   return (
     <div className="space-y-6">
       {/* Form */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
         <h3 className="font-semibold text-base mb-4">New Field Note</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Date
               </label>
               <input
                 type="date"
                 value={logDate}
                 onChange={(e) => setLogDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Job / Site
               </label>
               <input
@@ -213,7 +281,7 @@ function NotesTab() {
                 value={jobName}
                 onChange={(e) => setJobName(e.target.value)}
                 list="notepad-job-sites"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               />
               <datalist id="notepad-job-sites">
                 {jobSites.map((s) => (
@@ -222,13 +290,13 @@ function NotesTab() {
               </datalist>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Weather
               </label>
               <select
                 value={weather}
                 onChange={(e) => setWeather(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               >
                 <option value="">— Select —</option>
                 {WEATHER_OPTIONS.map((w) => (
@@ -240,7 +308,7 @@ function NotesTab() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Work Summary <span className="text-red-500">*</span>
             </label>
             <textarea
@@ -249,12 +317,12 @@ function NotesTab() {
               placeholder="What did the crew accomplish today?"
               value={workSummary}
               onChange={(e) => setWorkSummary(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none dark:bg-gray-700 dark:text-white"
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Issues
               </label>
               <textarea
@@ -262,11 +330,11 @@ function NotesTab() {
                 placeholder="Problems, delays, access issues..."
                 value={issues}
                 onChange={(e) => setIssues(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none dark:bg-gray-700 dark:text-white"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Materials Used
               </label>
               <textarea
@@ -274,13 +342,13 @@ function NotesTab() {
                 placeholder="Turf rolls, infill bags, adhesive..."
                 value={materials}
                 onChange={(e) => setMaterials(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none dark:bg-gray-700 dark:text-white"
               />
             </div>
           </div>
           <div className="flex items-end gap-4">
             <div className="w-40">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Sqft Completed
               </label>
               <input
@@ -289,7 +357,7 @@ function NotesTab() {
                 min={0}
                 value={sqft}
                 onChange={(e) => setSqft(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               />
             </div>
             <button
@@ -297,7 +365,7 @@ function NotesTab() {
               disabled={submitting || !workSummary.trim()}
               className="bg-green-700 hover:bg-green-800 text-white font-semibold px-6 py-2.5 rounded-lg text-sm disabled:opacity-50 transition-colors"
             >
-              {submitting ? "Saving..." : "💾 Save Note"}
+              {submitting ? "Saving..." : "Save Note"}
             </button>
             {successMsg && (
               <span className="text-green-600 text-sm font-medium">
@@ -318,13 +386,13 @@ function NotesTab() {
           placeholder="Search notes..."
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-green-500"
+          className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
         />
       </div>
 
       {/* List */}
       {filteredLogs.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-400 text-sm">
           {filterText
             ? "No matching notes found."
             : "No field notes yet. Submit your first note above."}
@@ -334,10 +402,10 @@ function NotesTab() {
           {filteredLogs.map((log) => (
             <div
               key={log.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4"
             >
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <span className="font-semibold text-gray-900">
+                <span className="font-semibold text-gray-900 dark:text-white">
                   {formatDate(log.log_date)}
                 </span>
                 {log.job_name && (
@@ -356,18 +424,18 @@ function NotesTab() {
                   </span>
                 )}
               </div>
-              <p className="text-sm text-gray-700">{log.work_summary}</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300">{log.work_summary}</p>
               {(log.issues || log.materials_used) && (
                 <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {log.issues && (
                     <div className="bg-red-50 rounded p-2 text-xs text-red-700">
-                      <span className="font-semibold">⚠️ Issues: </span>
+                      <span className="font-semibold">Issues: </span>
                       {log.issues}
                     </div>
                   )}
                   {log.materials_used && (
                     <div className="bg-amber-50 rounded p-2 text-xs text-amber-700">
-                      <span className="font-semibold">📦 Materials: </span>
+                      <span className="font-semibold">Materials: </span>
                       {log.materials_used}
                     </div>
                   )}
@@ -408,7 +476,12 @@ function DeliveriesTab() {
   const [filterStatus, setFilterStatus] = useState("all");
 
   const fetchDeliveries = useCallback(async () => {
-    if (!supabase) return;
+    if (isLocal) {
+      setDeliveries(getLocalDeliveries());
+      setJobSites(getLocalSites());
+      setLoading(false);
+      return;
+    }
     const [delivRes, sitesRes] = await Promise.all([
       supabase
         .from("deliveries")
@@ -433,39 +506,57 @@ function DeliveriesTab() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!vendor.trim() || !items.trim() || !supabase) return;
+    if (!vendor.trim() || !items.trim()) return;
     setSubmitting(true);
 
-    await supabase.from("deliveries").insert({
-      delivery_date: delivDate,
-      job_name: jobName || null,
-      vendor: vendor.trim(),
-      po_number: poNumber.trim() || null,
-      items_received: items.trim(),
-      status,
-      condition_notes: notes.trim() || null,
-      received_by: receivedBy.trim() || null,
-    });
-
-    // Cross-post to NAF
-    const statusLabels: Record<string, string> = {
-      delivered: "✅ Delivered",
-      partial: "⚠️ Partial",
-      damaged: "🚨 Damaged",
-      scheduled: "📅 Scheduled",
-      cancelled: "❌ Cancelled",
-    };
-    await supabase.from("naf_entries").insert({
-      entry_type: "delivery",
-      body: `${statusLabels[status]} from ${vendor.trim()}: ${items.trim()}${notes.trim() ? `\nNotes: ${notes.trim()}` : ""}`,
-      job_name: jobName || null,
-      metadata: {
+    if (isLocal) {
+      const newDelivery: Delivery = {
+        id: nextLocalId(),
+        delivery_date: delivDate,
+        job_name: jobName || null,
         vendor: vendor.trim(),
         po_number: poNumber.trim() || null,
+        items_received: items.trim(),
         status,
+        condition_notes: notes.trim() || null,
         received_by: receivedBy.trim() || null,
-      },
-    });
+        created_at: new Date().toISOString(),
+      };
+      const existing = getLocalDeliveries();
+      existing.unshift(newDelivery);
+      saveLocalDeliveries(existing);
+    } else {
+      await supabase.from("deliveries").insert({
+        delivery_date: delivDate,
+        job_name: jobName || null,
+        vendor: vendor.trim(),
+        po_number: poNumber.trim() || null,
+        items_received: items.trim(),
+        status,
+        condition_notes: notes.trim() || null,
+        received_by: receivedBy.trim() || null,
+      });
+
+      // Cross-post to NAF
+      const statusLabels: Record<string, string> = {
+        delivered: "Delivered",
+        partial: "Partial",
+        damaged: "Damaged",
+        scheduled: "Scheduled",
+        cancelled: "Cancelled",
+      };
+      await supabase.from("naf_entries").insert({
+        entry_type: "delivery",
+        body: `${statusLabels[status]} from ${vendor.trim()}: ${items.trim()}${notes.trim() ? `\nNotes: ${notes.trim()}` : ""}`,
+        job_name: jobName || null,
+        metadata: {
+          vendor: vendor.trim(),
+          po_number: poNumber.trim() || null,
+          status,
+          received_by: receivedBy.trim() || null,
+        },
+      });
+    }
 
     setVendor("");
     setPoNumber("");
@@ -473,7 +564,7 @@ function DeliveriesTab() {
     setNotes("");
     setReceivedBy("");
     setStatus("delivered");
-    setSuccessMsg("Delivery logged & posted to NAF!");
+    setSuccessMsg("Delivery logged!");
     setTimeout(() => setSuccessMsg(""), 3000);
     fetchDeliveries();
     setSubmitting(false);
@@ -503,23 +594,23 @@ function DeliveriesTab() {
   return (
     <div className="space-y-6">
       {/* Form */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
         <h3 className="font-semibold text-base mb-4">Log a Delivery</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Date
               </label>
               <input
                 type="date"
                 value={delivDate}
                 onChange={(e) => setDelivDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Job / Site
               </label>
               <input
@@ -528,7 +619,7 @@ function DeliveriesTab() {
                 value={jobName}
                 onChange={(e) => setJobName(e.target.value)}
                 list="delivery-job-sites"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               />
               <datalist id="delivery-job-sites">
                 {jobSites.map((s) => (
@@ -537,7 +628,7 @@ function DeliveriesTab() {
               </datalist>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Vendor <span className="text-red-500">*</span>
               </label>
               <input
@@ -546,11 +637,11 @@ function DeliveriesTab() {
                 placeholder="SYNLawn, FieldTurf..."
                 value={vendor}
                 onChange={(e) => setVendor(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 PO #
               </label>
               <input
@@ -558,12 +649,12 @@ function DeliveriesTab() {
                 placeholder="PO-2026-042"
                 value={poNumber}
                 onChange={(e) => setPoNumber(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Items Received <span className="text-red-500">*</span>
             </label>
             <textarea
@@ -572,30 +663,28 @@ function DeliveriesTab() {
               placeholder="8 rolls Pet Turf 80oz, 24 bags Zeofill infill, 6 tubes adhesive..."
               value={items}
               onChange={(e) => setItems(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none dark:bg-gray-700 dark:text-white"
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Status
               </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as DeliveryStatus)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               >
-                <option value="delivered">✅ Delivered — Full</option>
-                <option value="partial">⚠️ Partial — Short on items</option>
-                <option value="damaged">🚨 Damaged</option>
-                <option value="scheduled">
-                  📅 Scheduled (not yet arrived)
-                </option>
-                <option value="cancelled">❌ Cancelled</option>
+                <option value="delivered">Delivered — Full</option>
+                <option value="partial">Partial — Short on items</option>
+                <option value="damaged">Damaged</option>
+                <option value="scheduled">Scheduled (not yet arrived)</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Received By
               </label>
               <input
@@ -603,11 +692,11 @@ function DeliveriesTab() {
                 placeholder="Crew member name"
                 value={receivedBy}
                 onChange={(e) => setReceivedBy(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Condition Notes
               </label>
               <input
@@ -615,7 +704,7 @@ function DeliveriesTab() {
                 placeholder="Torn packaging, wrong spec..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
               />
             </div>
           </div>
@@ -625,7 +714,7 @@ function DeliveriesTab() {
               disabled={submitting || !vendor.trim() || !items.trim()}
               className="bg-green-700 hover:bg-green-800 text-white font-semibold px-6 py-2.5 rounded-lg text-sm disabled:opacity-50 transition-colors"
             >
-              {submitting ? "Logging..." : "📦 Log Delivery"}
+              {submitting ? "Logging..." : "Log Delivery"}
             </button>
             {successMsg && (
               <span className="text-green-600 text-sm font-medium">
@@ -641,10 +730,10 @@ function DeliveriesTab() {
         <div className="flex gap-1">
           {[
             { key: "all", label: "All" },
-            { key: "delivered", label: "✅ Delivered" },
-            { key: "partial", label: "⚠️ Partial" },
-            { key: "damaged", label: "🚨 Damaged" },
-            { key: "scheduled", label: "📅 Scheduled" },
+            { key: "delivered", label: "Delivered" },
+            { key: "partial", label: "Partial" },
+            { key: "damaged", label: "Damaged" },
+            { key: "scheduled", label: "Scheduled" },
           ].map((f) => (
             <button
               key={f.key}
@@ -664,13 +753,13 @@ function DeliveriesTab() {
           placeholder="Search deliveries..."
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-green-500 ml-auto"
+          className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-green-500 ml-auto dark:bg-gray-700 dark:text-white"
         />
       </div>
 
       {/* List */}
       {filteredDeliveries.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-400 text-sm">
           {filterText || filterStatus !== "all"
             ? "No matching deliveries found."
             : "No deliveries logged yet."}
@@ -680,14 +769,14 @@ function DeliveriesTab() {
           {filteredDeliveries.map((d) => (
             <div
               key={d.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold">
                     {formatDate(d.delivery_date)}
                   </span>
-                  <span className="font-medium text-gray-700">
+                  <span className="font-medium text-gray-700 dark:text-gray-300">
                     {d.vendor}
                   </span>
                   {d.job_name && (
@@ -709,7 +798,7 @@ function DeliveriesTab() {
                   {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
                 </span>
               </div>
-              <p className="mt-1.5 text-sm text-gray-700">
+              <p className="mt-1.5 text-sm text-gray-700 dark:text-gray-300">
                 {d.items_received}
               </p>
               {(d.condition_notes || d.received_by) && (
@@ -719,7 +808,7 @@ function DeliveriesTab() {
                   )}
                   {d.condition_notes && (
                     <span className="text-red-500">
-                      ⚠️ {d.condition_notes}
+                      {d.condition_notes}
                     </span>
                   )}
                 </div>
@@ -750,77 +839,88 @@ function ChecklistsTab() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<Set<string>>(new Set());
+  const [completionMsg, setCompletionMsg] = useState("");
 
   useEffect(() => {
-    async function loadSites() {
-      if (!supabase) return;
-      const { data } = await supabase
-        .from("job_sites")
-        .select("*")
-        .eq("status", "active")
-        .order("name");
-      if (data) setJobSites(data);
+    if (isLocal) {
+      setJobSites(getLocalSites());
+    } else {
+      async function loadSites() {
+        const { data } = await supabase
+          .from("job_sites")
+          .select("*")
+          .eq("status", "active")
+          .order("name");
+        if (data) setJobSites(data);
+      }
+      loadSites();
     }
-    loadSites();
   }, []);
 
   const items = CHECKLISTS[activeType];
   const completedCount = items.filter((item) => checked[item]).length;
 
   async function handleCheck(item: string) {
-    if (!supabase) return;
     const isNowChecked = !checked[item];
     setChecked((prev) => ({ ...prev, [item]: isNowChecked }));
 
     if (isNowChecked && jobName.trim()) {
       setSaving(item);
-      await supabase.from("checklist_items").insert({
-        job_name: jobName.trim(),
-        checklist_type: activeType,
-        item_label: item,
-        checked_by: checkedBy.trim() || null,
-        checked_at: new Date().toISOString(),
-      });
+      if (!isLocal) {
+        await supabase.from("checklist_items").insert({
+          job_name: jobName.trim(),
+          checklist_type: activeType,
+          item_label: item,
+          checked_by: checkedBy.trim() || null,
+          checked_at: new Date().toISOString(),
+        });
+      }
       setSaved((prev) => new Set(prev).add(item));
       setSaving(null);
     }
   }
 
   async function handleCompleteChecklist() {
-    if (!supabase || !jobName.trim()) return;
-    // Post checklist completion to NAF
-    await supabase.from("naf_entries").insert({
-      entry_type: "checklist",
-      body: `${CHECKLIST_LABELS[activeType]} checklist completed for ${jobName.trim()} — ${completedCount}/${items.length} items checked${checkedBy ? ` by ${checkedBy}` : ""}`,
-      job_name: jobName.trim(),
-      metadata: {
-        checklist_type: activeType,
-        completed_count: completedCount,
-        total_count: items.length,
-        checked_by: checkedBy || null,
-      },
-    });
+    if (!jobName.trim()) return;
+    const msg = `${CHECKLIST_LABELS[activeType]} checklist completed for ${jobName.trim()} — ${completedCount}/${items.length} items checked${checkedBy ? ` by ${checkedBy}` : ""}`;
+
+    if (!isLocal) {
+      await supabase.from("naf_entries").insert({
+        entry_type: "checklist",
+        body: msg,
+        job_name: jobName.trim(),
+        metadata: {
+          checklist_type: activeType,
+          completed_count: completedCount,
+          total_count: items.length,
+          checked_by: checkedBy || null,
+        },
+      });
+    }
+    setCompletionMsg("Checklist completion posted!");
+    setTimeout(() => setCompletionMsg(""), 3000);
   }
 
   function switchType(t: ChecklistType) {
     setActiveType(t);
     setChecked({});
     setSaved(new Set());
+    setCompletionMsg("");
   }
 
   const LABELS: Record<ChecklistType, string> = {
-    site_prep: `🏗️ ${CHECKLIST_LABELS.site_prep}`,
-    safety: `🦺 ${CHECKLIST_LABELS.safety}`,
-    final_walkthrough: `✅ ${CHECKLIST_LABELS.final_walkthrough}`,
+    site_prep: `${CHECKLIST_LABELS.site_prep}`,
+    safety: `${CHECKLIST_LABELS.safety}`,
+    final_walkthrough: `${CHECKLIST_LABELS.final_walkthrough}`,
   };
 
   return (
     <div className="space-y-4">
       {/* Job + person */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Job / Site
             </label>
             <input
@@ -829,7 +929,7 @@ function ChecklistsTab() {
               value={jobName}
               onChange={(e) => setJobName(e.target.value)}
               list="checklist-job-sites"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
             />
             <datalist id="checklist-job-sites">
               {jobSites.map((s) => (
@@ -838,7 +938,7 @@ function ChecklistsTab() {
             </datalist>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Checked By
             </label>
             <input
@@ -846,13 +946,13 @@ function ChecklistsTab() {
               placeholder="Your name"
               value={checkedBy}
               onChange={(e) => setCheckedBy(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
             />
           </div>
         </div>
         {!jobName.trim() && (
           <p className="text-xs text-amber-600 mt-2">
-            Enter a job name to save checked items to the database.
+            Enter a job name to save checked items.
           </p>
         )}
       </div>
@@ -875,7 +975,7 @@ function ChecklistsTab() {
       </div>
 
       {/* Progress + items */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
         <div className="flex items-center justify-between mb-3">
           <span className="font-semibold">{LABELS[activeType]}</span>
           <span className="text-sm text-gray-500">
@@ -905,7 +1005,7 @@ function ChecklistsTab() {
                 className={`w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors ${
                   isChecked
                     ? "bg-green-50 border-green-200 text-green-800"
-                    : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                    : "bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50"
                 }`}
               >
                 <div
@@ -944,15 +1044,18 @@ function ChecklistsTab() {
         {completedCount === items.length && (
           <div className="mt-4 space-y-2">
             <div className="bg-green-100 rounded-lg p-3 text-center text-green-800 font-semibold text-sm">
-              🎉 {LABELS[activeType]} checklist complete!
+              {LABELS[activeType]} checklist complete!
             </div>
             {jobName.trim() && (
               <button
                 onClick={handleCompleteChecklist}
                 className="w-full bg-green-700 hover:bg-green-800 text-white font-semibold py-2 rounded-lg text-sm transition-colors"
               >
-                📋 Post Completion to NAF Feed
+                Post Completion to Feed
               </button>
+            )}
+            {completionMsg && (
+              <p className="text-center text-green-600 text-sm font-medium">{completionMsg}</p>
             )}
           </div>
         )}
@@ -966,9 +1069,9 @@ function ChecklistsTab() {
 // ══════════════════════════════════════════════════════════════════════════
 
 const TABS = [
-  { id: "notes", label: "📝 Notes" },
-  { id: "deliveries", label: "📦 Deliveries" },
-  { id: "checklists", label: "✅ Checklists" },
+  { id: "notes", label: "Notes" },
+  { id: "deliveries", label: "Deliveries" },
+  { id: "checklists", label: "Checklists" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -988,7 +1091,7 @@ export default function NotepadPage() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold text-gray-900">📋 Notepad</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Notepad</h1>
 
       <div className="flex gap-2">
         {TABS.map((tab) => (
