@@ -64,70 +64,88 @@ function formatTime(dateStr: string) {
 
 const ENTRY_TYPE_CONFIG: Record<
   string,
-  { icon: string; label: string; color: string; bg: string; border: string }
+  { icon: string; label: string; color: string; bg: string; border: string; accent: string; badge: string }
 > = {
   general: {
     icon: "💬",
     label: "Note",
-    color: "text-gray-700",
-    bg: "bg-gray-50",
+    color: "text-gray-800",
+    bg: "bg-white",
     border: "border-gray-200",
+    accent: "border-l-gray-400",
+    badge: "bg-gray-100 text-gray-700",
   },
   note: {
     icon: "📝",
     label: "Field Note",
-    color: "text-blue-700",
-    bg: "bg-blue-50",
-    border: "border-blue-200",
+    color: "text-blue-800",
+    bg: "bg-white",
+    border: "border-blue-100",
+    accent: "border-l-blue-500",
+    badge: "bg-blue-100 text-blue-800",
   },
   delivery: {
     icon: "📦",
     label: "Delivery",
-    color: "text-amber-700",
-    bg: "bg-amber-50",
-    border: "border-amber-200",
+    color: "text-amber-800",
+    bg: "bg-white",
+    border: "border-amber-100",
+    accent: "border-l-amber-500",
+    badge: "bg-amber-100 text-amber-800",
   },
   clock_in: {
     icon: "🟢",
     label: "Clock In",
-    color: "text-green-700",
-    bg: "bg-green-50",
-    border: "border-green-200",
+    color: "text-green-800",
+    bg: "bg-white",
+    border: "border-green-100",
+    accent: "border-l-green-500",
+    badge: "bg-green-100 text-green-800",
   },
   clock_out: {
     icon: "🔴",
     label: "Clock Out",
-    color: "text-red-700",
-    bg: "bg-red-50",
-    border: "border-red-200",
+    color: "text-red-800",
+    bg: "bg-white",
+    border: "border-red-100",
+    accent: "border-l-red-500",
+    badge: "bg-red-100 text-red-800",
   },
   checklist: {
     icon: "✅",
     label: "Checklist",
-    color: "text-purple-700",
-    bg: "bg-purple-50",
-    border: "border-purple-200",
+    color: "text-purple-800",
+    bg: "bg-white",
+    border: "border-purple-100",
+    accent: "border-l-purple-500",
+    badge: "bg-purple-100 text-purple-800",
   },
   photo: {
     icon: "📸",
     label: "Photo",
-    color: "text-pink-700",
-    bg: "bg-pink-50",
-    border: "border-pink-200",
+    color: "text-pink-800",
+    bg: "bg-white",
+    border: "border-pink-100",
+    accent: "border-l-pink-500",
+    badge: "bg-pink-100 text-pink-800",
   },
   voice_memo: {
     icon: "🎙️",
     label: "Voice Memo",
-    color: "text-indigo-700",
-    bg: "bg-indigo-50",
-    border: "border-indigo-200",
+    color: "text-indigo-800",
+    bg: "bg-white",
+    border: "border-indigo-100",
+    accent: "border-l-indigo-500",
+    badge: "bg-indigo-100 text-indigo-800",
   },
   file_upload: {
     icon: "📎",
     label: "File",
-    color: "text-teal-700",
-    bg: "bg-teal-50",
-    border: "border-teal-200",
+    color: "text-teal-800",
+    bg: "bg-white",
+    border: "border-teal-100",
+    accent: "border-l-teal-500",
+    badge: "bg-teal-100 text-teal-800",
   },
 };
 
@@ -145,6 +163,8 @@ type FeedItem = {
   color: string;
   bg: string;
   border: string;
+  accent: string;
+  badge: string;
   attachments?: { file_type: string; file_name: string; file_url: string }[];
   pinned?: boolean;
   user?: string;
@@ -303,6 +323,8 @@ export default function FieldOffice() {
         color: cfg.color,
         bg: cfg.bg,
         border: cfg.border,
+        accent: cfg.accent,
+        badge: cfg.badge,
         attachments: e.naf_attachments?.map((a) => ({
           file_type: a.file_type,
           file_name: a.file_name,
@@ -316,6 +338,7 @@ export default function FieldOffice() {
     // Time entries (clock in/out events)
     timeEntries.forEach((t) => {
       const name = t.profiles?.full_name || "Unknown";
+      const ciCfg = ENTRY_TYPE_CONFIG.clock_in;
       items.push({
         id: `ci-${t.id}`,
         type: "clock_in",
@@ -325,9 +348,11 @@ export default function FieldOffice() {
         job: t.job_name || undefined,
         time: timeAgo(t.clock_in),
         timestamp: new Date(t.clock_in).getTime(),
-        color: "text-green-700",
-        bg: "bg-green-50",
-        border: "border-green-200",
+        color: ciCfg.color,
+        bg: ciCfg.bg,
+        border: ciCfg.border,
+        accent: ciCfg.accent,
+        badge: ciCfg.badge,
         user: name,
       });
       if (t.clock_out) {
@@ -337,6 +362,7 @@ export default function FieldOffice() {
           0,
           ms / 3600000 - (t.break_minutes || 0) / 60
         );
+        const coCfg = ENTRY_TYPE_CONFIG.clock_out;
         items.push({
           id: `co-${t.id}`,
           type: "clock_out",
@@ -346,15 +372,18 @@ export default function FieldOffice() {
           job: t.job_name || undefined,
           time: timeAgo(t.clock_out),
           timestamp: new Date(t.clock_out).getTime(),
-          color: "text-red-700",
-          bg: "bg-red-50",
-          border: "border-red-200",
+          color: coCfg.color,
+          bg: coCfg.bg,
+          border: coCfg.border,
+          accent: coCfg.accent,
+          badge: coCfg.badge,
           user: name,
         });
       }
     });
 
     // Daily logs
+    const noteCfg = ENTRY_TYPE_CONFIG.note;
     dailyLogs.forEach((l) => {
       items.push({
         id: `log-${l.id}`,
@@ -365,9 +394,11 @@ export default function FieldOffice() {
         job: l.job_name || undefined,
         time: timeAgo(l.created_at),
         timestamp: new Date(l.created_at).getTime(),
-        color: "text-blue-700",
-        bg: "bg-blue-50",
-        border: "border-blue-200",
+        color: noteCfg.color,
+        bg: noteCfg.bg,
+        border: noteCfg.border,
+        accent: noteCfg.accent,
+        badge: noteCfg.badge,
       });
     });
 
@@ -379,6 +410,7 @@ export default function FieldOffice() {
       scheduled: "📅",
       cancelled: "❌",
     };
+    const delivCfg = ENTRY_TYPE_CONFIG.delivery;
     deliveries.forEach((d) => {
       items.push({
         id: `del-${d.id}`,
@@ -389,9 +421,11 @@ export default function FieldOffice() {
         job: d.job_name || undefined,
         time: timeAgo(d.created_at),
         timestamp: new Date(d.created_at).getTime(),
-        color: "text-amber-700",
-        bg: "bg-amber-50",
-        border: "border-amber-200",
+        color: delivCfg.color,
+        bg: delivCfg.bg,
+        border: delivCfg.border,
+        accent: delivCfg.accent,
+        badge: delivCfg.badge,
       });
     });
 
@@ -698,7 +732,7 @@ export default function FieldOffice() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Field Office
+            Install Operations
           </h1>
           <p className="text-sm text-gray-500">{today}</p>
         </div>
@@ -1153,69 +1187,53 @@ export default function FieldOffice() {
         {filteredFeed.map((item) => (
           <div
             key={item.id}
-            className={`${item.bg} border ${item.border} rounded-xl p-4 hover:shadow-sm transition-shadow`}
+            className={`bg-white border ${item.border} border-l-4 ${item.accent} rounded-xl p-4 hover:shadow-md transition-shadow`}
           >
             <div className="flex items-start gap-3">
-              <div className="text-xl flex-shrink-0 mt-0.5">
-                {item.icon}
-              </div>
+              <div className="text-xl flex-shrink-0 mt-0.5">{item.icon}</div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span
-                    className={`text-sm font-semibold ${item.color}`}
-                  >
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className={`text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${item.badge}`}>
                     {item.title}
                   </span>
                   {item.pinned && (
-                    <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">
+                    <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full font-medium">
                       📌 Pinned
                     </span>
                   )}
                   {item.job && (
-                    <span className="text-xs bg-white/60 border px-2 py-0.5 rounded text-gray-600">
+                    <span className="text-xs bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full text-gray-700 font-medium">
                       {item.job}
                     </span>
                   )}
                   {item.user && (
-                    <span className="text-xs text-gray-500">
-                      by {item.user}
-                    </span>
+                    <span className="text-xs text-gray-400">by {item.user}</span>
                   )}
-                  <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
-                    {item.time}
-                  </span>
+                  <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{item.time}</span>
                 </div>
                 {item.body && (
-                  <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
+                  <p className="text-sm text-gray-800 mt-1 whitespace-pre-wrap leading-relaxed">
                     {item.body}
                   </p>
                 )}
-                {/* Attachment chips */}
-                {item.attachments &&
-                  item.attachments.length > 0 && (
-                    <div className="flex gap-2 mt-2 flex-wrap">
-                      {item.attachments.map((att, i) => (
-                        <div
-                          key={i}
-                          className="bg-white/60 border rounded-lg px-2 py-1 text-xs flex items-center gap-1 cursor-pointer hover:bg-white"
-                        >
-                          <span>
-                            {att.file_type === "photo"
-                              ? "📸"
-                              : att.file_type === "video"
-                              ? "🎬"
-                              : att.file_type ===
-                                "voice_memo"
-                              ? "🎙️"
-                              : "📎"}
-                          </span>
-                          <span className="truncate max-w-[120px]">
-                            {att.file_name}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                {item.attachments && item.attachments.length > 0 && (
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    {item.attachments.map((att, i) => (
+                      <div
+                        key={i}
+                        className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-xs flex items-center gap-1 cursor-pointer hover:bg-gray-100"
+                      >
+                        <span>
+                          {att.file_type === "photo" ? "📸"
+                            : att.file_type === "video" ? "🎬"
+                            : att.file_type === "voice_memo" ? "🎙️"
+                            : "📎"}
+                        </span>
+                        <span className="truncate max-w-[120px] text-gray-700">{att.file_name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

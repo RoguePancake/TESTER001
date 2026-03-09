@@ -115,7 +115,7 @@ interface NafSettings {
 
 function CompanyTab() {
   const [settings, setSettings] = useState<CompanySettings>({
-    name: "Jobsite Ops HQ",
+    name: "Install Operations",
     phone: "",
     email: "",
     logo_url: "",
@@ -1126,14 +1126,14 @@ function DataTab() {
 // ══════════════════════════════════════════════════════════════════════════
 
 const TABS = [
-  { id: "company", label: "Company", component: CompanyTab },
-  { id: "crew", label: "Crew", component: CrewTab },
-  { id: "jobsites", label: "Job Sites", component: JobSitesTab },
-  { id: "hours", label: "Pay Clock", component: HoursSettingsTab },
-  { id: "display", label: "Display", component: DisplayTab },
-  { id: "notifications", label: "Alerts", component: NotificationsTab },
-  { id: "naf", label: "Feed", component: NafSettingsTab },
-  { id: "data", label: "Data", component: DataTab },
+  { id: "company", label: "Company", icon: "🏢", component: CompanyTab },
+  { id: "crew", label: "Crew", icon: "👥", component: CrewTab },
+  { id: "jobsites", label: "Job Sites", icon: "📍", component: JobSitesTab },
+  { id: "hours", label: "Pay Clock", icon: "⏱", component: HoursSettingsTab },
+  { id: "display", label: "Display", icon: "🎨", component: DisplayTab },
+  { id: "notifications", label: "Alerts", icon: "🔔", component: NotificationsTab },
+  { id: "naf", label: "Feed", icon: "📡", component: NafSettingsTab },
+  { id: "data", label: "Data & Export", icon: "📊", component: DataTab },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -1142,25 +1142,58 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("company");
 
   const ActiveComponent = TABS.find((t) => t.id === activeTab)?.component || CompanyTab;
+  const activeTabData = TABS.find((t) => t.id === activeTab)!;
 
   return (
-    <div className="space-y-5">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
-
-      <div className="flex gap-1 flex-wrap">
-        {TABS.map((tab) => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-              activeTab === tab.id
-                ? "bg-green-700 text-white shadow-sm"
-                : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
-            }`}>
-            {tab.label}
-          </button>
-        ))}
+    <div className="space-y-0">
+      {/* Header */}
+      <div className="pb-5">
+        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Configure Install Operations for your team</p>
       </div>
 
-      <ActiveComponent />
+      <div className="flex gap-4 min-h-[600px]">
+        {/* Sidebar nav */}
+        <div className="w-44 flex-shrink-0">
+          <nav className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+            {TABS.map((tab, i) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left ${
+                  i > 0 ? "border-t border-gray-100" : ""
+                } ${
+                  activeTab === tab.id
+                    ? "bg-green-50 text-green-800 font-semibold"
+                    : "text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                <span className="text-base">{tab.icon}</span>
+                <span className="truncate">{tab.label}</span>
+                {activeTab === tab.id && (
+                  <span className="ml-auto text-green-600 text-xs">›</span>
+                )}
+              </button>
+            ))}
+          </nav>
+
+          {/* App info */}
+          <div className="mt-4 bg-gray-900 rounded-2xl p-4 text-center">
+            <div className="w-10 h-10 rounded-xl bg-green-600 flex items-center justify-center text-white font-black text-base mx-auto mb-2">IO</div>
+            <p className="text-white text-xs font-bold">Install Operations</p>
+            <p className="text-gray-500 text-xs mt-0.5">v1.0</p>
+          </div>
+        </div>
+
+        {/* Content panel */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-2xl">{activeTabData.icon}</span>
+            <h2 className="text-lg font-bold text-gray-900">{activeTabData.label}</h2>
+          </div>
+          <ActiveComponent />
+        </div>
+      </div>
     </div>
   );
 }

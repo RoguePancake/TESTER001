@@ -198,9 +198,9 @@ export default function PayClockPage() {
   const isLocal = !supabase;
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Live duration ticker ────────────────────────────────────────────
+  // ── Live duration ticker (every 60s for hour:min display) ───────────
   useEffect(() => {
-    tickRef.current = setInterval(() => setTick((t) => t + 1), 15000);
+    tickRef.current = setInterval(() => setTick((t) => t + 1), 60000);
     return () => {
       if (tickRef.current) clearInterval(tickRef.current);
     };
@@ -812,91 +812,126 @@ export default function PayClockPage() {
 
       {/* ── Currently Clocked In ──────────────────────────────────────── */}
       {(viewMode === "active" || clockedIn.length > 0) && (
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <h2 className="font-semibold text-lg mb-4">
-            Currently Clocked In
-            <span className="ml-2 bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded-full">
+        <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <h2 className="font-bold text-base text-gray-900 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse inline-block" />
+              On The Clock
+            </h2>
+            <span className="bg-green-100 text-green-800 text-xs font-bold px-2.5 py-1 rounded-full">
               {clockedIn.length} active
             </span>
-          </h2>
+          </div>
           {clockedIn.length === 0 ? (
-            <p className="text-sm text-gray-400">
-              Nobody clocked in right now. Use the form above to clock someone in.
-            </p>
+            <div className="px-5 py-8 text-center text-gray-400 text-sm">
+              Nobody clocked in. Use the form above to clock someone in.
+            </div>
           ) : (
-            <div className="space-y-3">
-              {clockedIn.map((entry) => (
-                <div key={entry.id} className="border border-gray-100 rounded-lg p-3 hover:bg-gray-50">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium text-gray-900">
-                        {entry.profiles?.full_name ?? "—"}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {(entry.profiles as { role?: string })?.role ?? ""}
-                      </span>
-                      {entry.work_type && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                          {entry.work_type}
-                        </span>
-                      )}
+            <div className="divide-y divide-gray-100">
+              {clockedIn.map((entry) => {
+                const ms = Date.now() - new Date(entry.clock_in).getTime();
+                const totalMins = Math.floor(ms / 60000);
+                const hrs = Math.floor(totalMins / 60);
+                const mins = totalMins % 60;
+                const estPay = entry.pay_rate ? (entry.pay_rate * ms / 3600000).toFixed(2) : null;
+                return (
+                  <div key={entry.id} className="p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Avatar */}
+                        <div className="w-9 h-9 rounded-full bg-green-600 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
+                          {(entry.profiles?.full_name ?? "?")[0]}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold text-gray-900 text-sm">
+                            {entry.profiles?.full_name ?? "—"}
+                          </div>
+                          <div className="text-xs text-gray-400 flex items-center gap-2">
+                            <span>{(entry.profiles as { role?: string })?.role ?? ""}</span>
+                            {entry.work_type && (
+                              <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">{entry.work_type}</span>
+                            )}
+                            {entry.job_name && (
+                              <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">{entry.job_name}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {/* Live timer */}
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-2xl font-black text-green-600 font-mono tabular-nums">
+                          {hrs}h {mins.toString().padStart(2, "0")}m
+                        </div>
+                        <div className="text-xs text-gray-400">since {formatTime(entry.clock_in)}</div>
+                      </div>
                     </div>
-                    <span className="bg-amber-50 text-amber-700 text-xs font-mono px-2 py-0.5 rounded animate-pulse">
-                      {formatDuration(entry.clock_in)}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-2">
-                    <span>In: {formatTime(entry.clock_in)}</span>
-                    {entry.job_name && <span>Job: {entry.job_name}</span>}
-                    {entry.pay_rate && <span>Rate: ${entry.pay_rate}/hr</span>}
-                    {entry.weather && <span>Weather: {entry.weather}</span>}
-                    {entry.travel_time && <span>Travel: {entry.travel_time}min</span>}
-                    {entry.equipment_used && <span>Equip: {entry.equipment_used}</span>}
-                    {entry.location_note && <span>Loc: {entry.location_note}</span>}
-                    {entry.notes && <span>Notes: {entry.notes}</span>}
-                  </div>
-                  <div className="flex items-center gap-2">
+
+                    {/* Info row */}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-3">
+                      {entry.pay_rate && <span>💰 ${entry.pay_rate}/hr</span>}
+                      {estPay && <span className="text-green-600 font-medium">~${estPay} earned</span>}
+                      {entry.weather && <span>☁️ {entry.weather}</span>}
+                      {entry.travel_time && <span>🚗 {entry.travel_time}min travel</span>}
+                      {entry.equipment_used && <span>🔧 {entry.equipment_used}</span>}
+                      {entry.notes && <span>📝 {entry.notes}</span>}
+                    </div>
+
+                    {/* Clock out panel */}
                     {showClockOutExtras === entry.id ? (
-                      <div className="flex items-center gap-2 flex-wrap flex-1">
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="Sqft done"
-                          value={clockOutSqft}
-                          onChange={(e) => setClockOutSqft(e.target.value)}
-                          className="border border-gray-300 rounded-lg px-2 py-1 text-xs w-24 focus:outline-none focus:ring-2 focus:ring-green-500"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Materials used"
-                          value={clockOutMaterials}
-                          onChange={(e) => setClockOutMaterials(e.target.value)}
-                          className="border border-gray-300 rounded-lg px-2 py-1 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-green-500"
-                        />
-                        <button
-                          onClick={() => handleClockOut(entry.id)}
-                          className="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-3 py-1 rounded-md transition-colors"
-                        >
-                          Confirm Clock Out
-                        </button>
-                        <button
-                          onClick={() => setShowClockOutExtras(null)}
-                          className="text-xs text-gray-400 hover:text-gray-600"
-                        >
-                          Cancel
-                        </button>
+                      <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
+                        <p className="text-xs font-semibold text-red-700">Clock Out — Optional wrap-up</p>
+                        <div className="flex gap-2 flex-wrap">
+                          <input
+                            type="number"
+                            step="0.1"
+                            placeholder="Sqft completed"
+                            value={clockOutSqft}
+                            onChange={(e) => setClockOutSqft(e.target.value)}
+                            className="border border-red-200 rounded-lg px-3 py-1.5 text-xs w-32 focus:outline-none focus:ring-2 focus:ring-red-400 bg-white"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Materials used (optional)"
+                            value={clockOutMaterials}
+                            onChange={(e) => setClockOutMaterials(e.target.value)}
+                            className="border border-red-200 rounded-lg px-3 py-1.5 text-xs flex-1 min-w-32 focus:outline-none focus:ring-2 focus:ring-red-400 bg-white"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleClockOut(entry.id)}
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors"
+                          >
+                            ✓ Confirm Clock Out
+                          </button>
+                          <button
+                            onClick={() => setShowClockOutExtras(null)}
+                            className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     ) : (
-                      <button
-                        onClick={() => setShowClockOutExtras(entry.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-3 py-1 rounded-md transition-colors"
-                      >
-                        Clock Out
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowClockOutExtras(entry.id)}
+                          className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+                        >
+                          Clock Out
+                        </button>
+                        <button
+                          onClick={() => handleBreakUpdate(entry.id, entry.break_minutes || 0)}
+                          className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-medium rounded-xl transition-colors"
+                          title="Update break time"
+                        >
+                          ☕ Break
+                        </button>
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

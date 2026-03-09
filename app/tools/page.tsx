@@ -230,6 +230,288 @@ function InfillCalculator() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// CALCULATOR 4: Concrete
+// ══════════════════════════════════════════════════════════════════════════
+
+function ConcreteCalculator() {
+  const [shape, setShape] = useState<"rect" | "circle">("rect");
+  const [length, setLength] = useState("");
+  const [width, setWidth] = useState("");
+  const [diameter, setDiameter] = useState("");
+  const [depth, setDepth] = useState("4");
+  const [bagSize, setBagSize] = useState<"60" | "80">("80");
+  const [pricePerBag, setPricePerBag] = useState("");
+
+  const depthFt = (parseFloat(depth) || 0) / 12;
+
+  let cubicFt = 0;
+  if (shape === "rect") {
+    cubicFt = (parseFloat(length) || 0) * (parseFloat(width) || 0) * depthFt;
+  } else {
+    const r = (parseFloat(diameter) || 0) / 2;
+    cubicFt = Math.PI * r * r * depthFt;
+  }
+
+  const cubicYards = round(cubicFt / 27);
+  const cubicYardsPlus10 = round(cubicYards * 1.1);
+
+  // 1 cubic yard ≈ 40 bags of 60lb or 30 bags of 80lb
+  const bagsPerYard = bagSize === "60" ? 40 : 30;
+  const bags = Math.ceil(cubicYardsPlus10 * bagsPerYard);
+  const totalCost = pricePerBag ? round(bags * parseFloat(pricePerBag)) : null;
+
+  const hasInput = shape === "rect"
+    ? parseFloat(length) > 0 && parseFloat(width) > 0
+    : parseFloat(diameter) > 0;
+
+  return (
+    <Card title="Concrete Calculator" emoji="🧱">
+      {/* Shape toggle */}
+      <div className="flex gap-2 mb-4">
+        {([["rect", "Rectangular Slab"], ["circle", "Circular Slab"]] as const).map(([s, lbl]) => (
+          <button
+            key={s}
+            onClick={() => setShape(s)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              shape === s ? "bg-green-700 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        {shape === "rect" ? (
+          <>
+            <Field label="Length (ft)">
+              <NumInput value={length} onChange={setLength} placeholder="20" />
+            </Field>
+            <Field label="Width (ft)">
+              <NumInput value={width} onChange={setWidth} placeholder="10" />
+            </Field>
+          </>
+        ) : (
+          <Field label="Diameter (ft)">
+            <NumInput value={diameter} onChange={setDiameter} placeholder="12" />
+          </Field>
+        )}
+        <Field label="Depth (inches)">
+          <NumInput value={depth} onChange={setDepth} placeholder="4" />
+        </Field>
+        <Field label="Bag Size">
+          <select
+            value={bagSize}
+            onChange={(e) => setBagSize(e.target.value as "60" | "80")}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+          >
+            <option value="80">80 lb bag</option>
+            <option value="60">60 lb bag</option>
+          </select>
+        </Field>
+        <Field label="Price / Bag ($)">
+          <NumInput value={pricePerBag} onChange={setPricePerBag} placeholder="7.50" />
+        </Field>
+      </div>
+
+      {hasInput && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Result label="Cubic Feet" value={round(cubicFt)} unit="ft³" />
+            <Result label="Cubic Yards" value={cubicYards} unit="yd³" />
+            <Result label="Yards + 10% Buffer" value={cubicYardsPlus10} unit="yd³" highlight />
+            <Result label={`${bagSize}lb Bags Needed`} value={bags.toLocaleString()} unit="bags" highlight />
+          </div>
+          {totalCost !== null && (
+            <div className="mt-3 rounded-lg p-3 bg-green-50 border border-green-200">
+              <div className="text-xs text-gray-500">Estimated Material Cost</div>
+              <div className="text-2xl font-bold text-green-700">${totalCost.toLocaleString()}</div>
+            </div>
+          )}
+          <p className="text-xs text-gray-400 mt-3">
+            Approximate: 1 yd³ ≈ {bagsPerYard} × {bagSize}lb bags. Always add 10% for waste and spillage.
+          </p>
+        </>
+      )}
+    </Card>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CALCULATOR 5: Dual Infill
+// ══════════════════════════════════════════════════════════════════════════
+
+function DualInfillCalculator() {
+  const [mode, setMode] = useState<"single" | "dual">("single");
+  const [sqft, setSqft] = useState("");
+
+  // Layer 1
+  const [l1Idx, setL1Idx] = useState(1); // Silica Sand
+  const [l1Rate, setL1Rate] = useState(String(INFILL_TYPES[1].lbsPerSqft));
+  const [l1Price, setL1Price] = useState("");
+
+  // Layer 2
+  const [l2Idx, setL2Idx] = useState(2); // Crumb Rubber
+  const [l2Rate, setL2Rate] = useState(String(INFILL_TYPES[2].lbsPerSqft));
+  const [l2Price, setL2Price] = useState("");
+
+  const area = parseFloat(sqft) || 0;
+
+  const l1 = INFILL_TYPES[l1Idx];
+  const l1TotalLbs = round(area * (parseFloat(l1Rate) || l1.lbsPerSqft));
+  const l1Bags = Math.ceil(l1TotalLbs / l1.bagLbs);
+  const l1BagsPlus5 = Math.ceil(l1Bags * 1.05);
+  const l1Cost = l1Price ? round(l1BagsPlus5 * parseFloat(l1Price)) : null;
+
+  const l2 = INFILL_TYPES[l2Idx];
+  const l2TotalLbs = round(area * (parseFloat(l2Rate) || l2.lbsPerSqft));
+  const l2Bags = Math.ceil(l2TotalLbs / l2.bagLbs);
+  const l2BagsPlus5 = Math.ceil(l2Bags * 1.05);
+  const l2Cost = l2Price ? round(l2BagsPlus5 * parseFloat(l2Price)) : null;
+
+  const totalCost = (l1Cost ?? 0) + (l2Cost ?? 0);
+
+  // Dual presets
+  const PRESETS = [
+    { label: "Sand + Rubber", l1: 1, l2: 2 },
+    { label: "Sand + Cork", l1: 1, l2: 3 },
+    { label: "Sand + Zeofill", l1: 1, l2: 0 },
+    { label: "Sand + HybridFill", l1: 1, l2: 5 },
+  ];
+
+  function applyPreset(p: { l1: number; l2: number }) {
+    setL1Idx(p.l1);
+    setL1Rate(String(INFILL_TYPES[p.l1].lbsPerSqft));
+    setL2Idx(p.l2);
+    setL2Rate(String(INFILL_TYPES[p.l2].lbsPerSqft));
+    setMode("dual");
+  }
+
+  return (
+    <Card title="Infill Calculator" emoji="🏖️">
+      {/* Mode toggle */}
+      <div className="flex gap-2 mb-4 flex-wrap items-center">
+        <div className="flex gap-2">
+          {([["single", "Single Layer"], ["dual", "Dual Layer"]] as const).map(([m, lbl]) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                mode === m ? "bg-green-700 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+        {mode === "dual" && (
+          <div className="flex gap-1 flex-wrap ml-2">
+            {PRESETS.map((p) => (
+              <button
+                key={p.label}
+                onClick={() => applyPreset(p)}
+                className="px-2 py-1 bg-blue-50 border border-blue-200 text-blue-700 rounded text-xs font-medium hover:bg-blue-100"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Sqft input */}
+      <div className="mb-4 max-w-xs">
+        <Field label="Total Sqft">
+          <NumInput value={sqft} onChange={setSqft} placeholder="1500" />
+        </Field>
+      </div>
+
+      {/* Layer 1 */}
+      <div className={`rounded-xl border p-4 mb-3 ${mode === "dual" ? "border-amber-200 bg-amber-50/30" : "border-gray-200"}`}>
+        {mode === "dual" && <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-3">Layer 1 — Base (Sand)</p>}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+          <Field label="Infill Type">
+            <select
+              value={l1Idx}
+              onChange={(e) => { const i = parseInt(e.target.value); setL1Idx(i); setL1Rate(String(INFILL_TYPES[i].lbsPerSqft)); }}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              {INFILL_TYPES.map((t, i) => <option key={t.label} value={i}>{t.label}</option>)}
+            </select>
+          </Field>
+          <Field label={`Rate (lbs/sqft)`}>
+            <NumInput value={l1Rate} onChange={setL1Rate} placeholder={String(l1.lbsPerSqft)} />
+          </Field>
+          <Field label="Price / Bag ($)">
+            <NumInput value={l1Price} onChange={setL1Price} placeholder="12.00" />
+          </Field>
+        </div>
+        {area > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Result label="Total Lbs" value={l1TotalLbs.toLocaleString()} unit="lbs" />
+            <Result label={`${l1.bagLbs}lb Bags`} value={l1Bags} unit="bags" />
+            <Result label="Order (+5%)" value={l1BagsPlus5} unit="bags" highlight />
+            {l1Cost !== null && <Result label="Layer Cost" value={`$${l1Cost.toLocaleString()}`} highlight />}
+          </div>
+        )}
+      </div>
+
+      {/* Layer 2 — only show in dual mode */}
+      {mode === "dual" && (
+        <div className="rounded-xl border border-green-200 bg-green-50/30 p-4 mb-3">
+          <p className="text-xs font-bold text-green-800 uppercase tracking-wide mb-3">Layer 2 — Top (Rubber / Cork / etc.)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            <Field label="Infill Type">
+              <select
+                value={l2Idx}
+                onChange={(e) => { const i = parseInt(e.target.value); setL2Idx(i); setL2Rate(String(INFILL_TYPES[i].lbsPerSqft)); }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                {INFILL_TYPES.map((t, i) => <option key={t.label} value={i}>{t.label}</option>)}
+              </select>
+            </Field>
+            <Field label={`Rate (lbs/sqft)`}>
+              <NumInput value={l2Rate} onChange={setL2Rate} placeholder={String(l2.lbsPerSqft)} />
+            </Field>
+            <Field label="Price / Bag ($)">
+              <NumInput value={l2Price} onChange={setL2Price} placeholder="18.00" />
+            </Field>
+          </div>
+          {area > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Result label="Total Lbs" value={l2TotalLbs.toLocaleString()} unit="lbs" />
+              <Result label={`${l2.bagLbs}lb Bags`} value={l2Bags} unit="bags" />
+              <Result label="Order (+5%)" value={l2BagsPlus5} unit="bags" highlight />
+              {l2Cost !== null && <Result label="Layer Cost" value={`$${l2Cost.toLocaleString()}`} highlight />}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Grand total for dual */}
+      {mode === "dual" && area > 0 && (l1Cost !== null || l2Cost !== null) && (
+        <div className="rounded-xl bg-gray-900 text-white p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide">Total Infill Cost (Both Layers)</p>
+              <p className="text-3xl font-black text-green-400 mt-1">${totalCost.toLocaleString()}</p>
+            </div>
+            <div className="text-right text-sm text-gray-300">
+              <p>{l1BagsPlus5} bags {l1.label}</p>
+              <p>{l2BagsPlus5} bags {l2.label}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-400 mt-3">
+        All quantities include 5% overage. Adjust lbs/sqft rate based on pile height and depth spec.
+      </p>
+    </Card>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // SPORT FIELD LAYOUTS
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -540,6 +822,7 @@ const TABS = [
   { id: "turf", label: "🌿 Turf" },
   { id: "gravel", label: "🪨 Gravel" },
   { id: "infill", label: "🏖️ Infill" },
+  { id: "concrete", label: "🧱 Concrete" },
   { id: "football", label: "🏈 Football" },
   { id: "baseball", label: "⚾ Baseball" },
   { id: "soccer", label: "⚽ Soccer" },
@@ -577,7 +860,8 @@ export default function ToolsPage() {
       {/* Calculator panels */}
       {active === "turf" && <TurfCalculator />}
       {active === "gravel" && <GravelCalculator />}
-      {active === "infill" && <InfillCalculator />}
+      {active === "infill" && <DualInfillCalculator />}
+      {active === "concrete" && <ConcreteCalculator />}
       {active === "football" && <FootballLayout />}
       {active === "baseball" && <BaseballLayout />}
       {active === "soccer" && <SoccerLayout />}
