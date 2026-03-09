@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AppShell from "./AppShell";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
   title: "Install Operations",
@@ -14,7 +15,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <AppShell>{children}</AppShell>
+      <AppShell>
+        {children}
+        <SpeedInsights />
+      </AppShell>
     </html>
   );
 }
