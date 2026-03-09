@@ -10,6 +10,8 @@ import {
 import { supabase } from "@/lib/supabase";
 import { normalizeRole, isAdminRole, isManagerOrAbove } from "@/lib/engines/permissions";
 import type { UserRole } from "@/lib/engines/permissions";
+import { getLocalSession, clearLocalSession } from "@/lib/local-auth";
+import type { LocalAuthSession } from "@/lib/local-auth";
 
 // ── Nav link definitions ───────────────────────────────────────────────────────
 interface NavLink {
@@ -26,12 +28,14 @@ const ALL_NAV_LINKS: NavLink[] = [
   { href: "/tools",     label: "Tools",        icon: "🔧" },
   { href: "/settings",  label: "Settings",     icon: "⚙️" },
   { href: "/admin",     label: "Admin",        icon: "🛠", minRole: "company_owner" },
+  { href: "/dev-tools", label: "Dev Tools",    icon: "🔬", minRole: "CreativeEditor" },
 ];
 
 function getNavLinks(role: UserRole | null): NavLink[] {
-  if (!role) return ALL_NAV_LINKS; // demo / no-auth mode shows everything
+  if (!role) return ALL_NAV_LINKS.filter((l) => !l.minRole);
   return ALL_NAV_LINKS.filter((link) => {
     if (!link.minRole) return true;
+    if (link.minRole === "CreativeEditor") return role === "CreativeEditor";
     if (link.minRole === "field_manager") return isManagerOrAbove(role);
     if (link.minRole === "company_owner") return isAdminRole(role);
     return true;
@@ -48,6 +52,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [userName, setUserName] = useState<string>("");
   const [unreadCount, setUnreadCount] = useState(0);
   const [authChecked, setAuthChecked] = useState(false);
+  const [localSession, setLocalSessionState] = useState<LocalAuthSession | null>(null);
+
+  const isLocal = !supabase;
 
   // Apply display preferences on mount
   useEffect(() => {
@@ -69,13 +76,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!supabase) {
-      // No Supabase = demo mode, no auth required
-      setAuthChecked(true);
+    if (isLocal) {
+      // Local auth mode
+      const session = getLocalSession();
+      if (session) {
+        setLocalSessionState(session);
+        setUserRole(normalizeRole(session.role));
+        setUserName(session.fullName);
+        setAuthChecked(true);
+      } else if (pathname !== "/auth") {
+        router.replace("/auth");
+      } else {
+        setAuthChecked(true);
+      }
       return;
     }
 
-    // Check current session
+    // Supabase auth mode
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         loadUserProfile(data.session.user.id);
@@ -85,7 +102,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       setAuthChecked(true);
     });
 
-    // Subscribe to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         loadUserProfile(session.user.id);
@@ -97,9 +113,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [pathname, router, loadUserProfile]);
+  }, [pathname, router, loadUserProfile, isLocal]);
 
-  // Poll unread notification count (every 60s when logged in)
+  // Poll unread notification count (every 60s when logged in, Supabase only)
   useEffect(() => {
     if (!supabase || !userRole) return;
     const fetchCount = async () => {
@@ -122,9 +138,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [userRole]);
 
   const handleSignOut = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    router.push("/auth");
+    if (isLocal) {
+      clearLocalSession();
+      setLocalSessionState(null);
+      setUserRole(null);
+      setUserName("");
+      router.push("/auth");
+    } else {
+      await supabase.auth.signOut();
+      router.push("/auth");
+    }
   };
 
   // Don't render shell on auth page
@@ -132,11 +155,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return <body>{children}</body>;
   }
 
-  // Wait for auth check before rendering (prevents flash)
-  if (supabase && !authChecked) {
+  // Wait for auth check before rendering
+  if (!authChecked) {
     return (
       <body className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-400 text-sm animate-pulse">Loading…</p>
+        <p className="text-gray-400 text-sm animate-pulse">Loading...</p>
+      </body>
+    );
+  }
+
+  // If not logged in (local mode) and not on auth page, don't render
+  if (isLocal && !localSession && pathname !== "/auth") {
+    return (
+      <body className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-gray-400 text-sm animate-pulse">Redirecting to login...</p>
       </body>
     );
   }
@@ -182,7 +214,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 {userName}
               </span>
             )}
-            {supabase && userRole && (
+            {userRole && (
+              <span className="hidden sm:block text-xs opacity-60">
+                ({userRole})
+              </span>
+            )}
+            {(supabase || localSession) && userRole && (
               <button
                 onClick={handleSignOut}
                 className="text-xs px-2 py-1 rounded-md hover:bg-white/15 transition-colors opacity-80 hover:opacity-100"
@@ -204,9 +241,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="app-bottom-nav fixed md:hidden bottom-0 left-0 right-0 z-50 border-t backdrop-blur-md">
         <div
           className="max-w-5xl mx-auto px-2 py-2 grid gap-1"
-          style={{ gridTemplateColumns: `repeat(${navLinks.length}, 1fr)` }}
+          style={{ gridTemplateColumns: `repeat(${Math.min(navLinks.length, 6)}, 1fr)` }}
         >
-          {navLinks.map((link) => (
+          {navLinks.slice(0, 6).map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -225,7 +262,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Desktop footer ── */}
       <footer className="hidden md:block border-t py-3 text-center text-xs opacity-60">
-        Jobsite Ops · Field Management Operating System
+        Jobsite Ops HQ · Field Management Operating System
         {userRole && (
           <span className="ml-2 opacity-70">· Role: {userRole}</span>
         )}
