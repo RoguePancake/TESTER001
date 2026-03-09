@@ -26,7 +26,9 @@ const ALL_NAV_LINKS: NavLink[] = [
   { href: "/hours",     label: "Pay Clock",    icon: "⏱" },
   { href: "/notepad",   label: "Notepad",      icon: "📋" },
   { href: "/tools",     label: "Tools",        icon: "🔧" },
+  { href: "/employees", label: "Employees",    icon: "👥", minRole: "field_manager" },
   { href: "/settings",  label: "Settings",     icon: "⚙️" },
+  { href: "/system",    label: "System Info",  icon: "ℹ️" },
   { href: "/admin",     label: "Admin",        icon: "🛠", minRole: "company_owner" },
   { href: "/dev-tools", label: "Dev Tools",    icon: "🔬", minRole: "CreativeEditor" },
 ];

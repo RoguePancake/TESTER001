@@ -1,8 +1,149 @@
-# Jobsite Operations HQ
+# InstallOperations
 
-**Your AI-Powered Field Operations Command Center for Artificial Turf Installation**
+**by Pro-Grade Artificial Turf**
 
-> From first clock-in to last clock-out — every hour tracked, every delivery logged, every job prepped, every decision recorded. One app. Every platform. Zero gaps.
+> A Jobsite Operating System designed for installation crews and field-based construction companies.
+
+-----
+
+## InstallOperations Overview
+
+InstallOperations (IO) is a contractor operations platform designed specifically for installation crews and field-based construction companies. It originated inside Pro-Grade Artificial Turf to manage day-to-day artificial turf installation projects, but is being architected as a general-purpose system for any field contractor operation.
+
+The platform is being built internally by a real installation company and tested in active field operations. This gives the software a strong focus on real-world contractor workflows — from first clock-in to last clock-out, every hour tracked, every delivery logged, every job prepped, every decision recorded.
+
+IO manages: **employees**, **jobs**, **time tracking**, **materials**, **equipment**, **jobsite notes**, and **operational intelligence** — all from a single unified platform.
+
+-----
+
+## Core System Architecture
+
+The platform is built around five core systems. These systems form the foundation of the application and work together to provide a complete operational picture.
+
+### 1. Identity System
+
+**Purpose:** Manage employee data and workforce information.
+
+- Employee profiles with contact info, hire dates, and certifications
+- Pay rates with job-specific overrides and rate history
+- Crew assignments and role management
+- Skills tracking and certification management
+- Work history and performance data
+- Employment status management (active, on leave, terminated)
+
+The Identity System forms the company personnel database. Every worker, their role, their rate, and their assignment history lives here.
+
+### 2. Job System
+
+**Purpose:** Manage installation projects from intake to completion.
+
+Each job contains:
+- Client information and jobsite address
+- Project size and scope details
+- Assigned crew and crew roles
+- Photos and documentation
+- Notes and daily logs
+- Time logs linked to the project
+- Materials used and delivery records
+
+Think of this as a **digital job binder** — everything about a project in one place.
+
+### 3. Time & Payroll System
+
+**Purpose:** Track labor hours and associate them with specific jobs.
+
+- Clock in / clock out with optional GPS verification
+- Break tracking and automatic duration calculation
+- Job-linked time entries with pay rate snapshots
+- Weekly summaries with regular and overtime breakdowns
+- Timesheet approval workflow (pending, approved, rejected)
+- Pay period settings and payroll generation
+- CSV export for QuickBooks, Gusto, and other payroll services
+
+This system ensures that labor costs are tied directly to projects, giving owners real-time visibility into job profitability.
+
+### 4. Materials & Logistics System
+
+**Purpose:** Track materials used on each project.
+
+Examples of tracked materials:
+- Turf rolls (type, size, lot number)
+- Base material (quantity, vendor)
+- Sand, nails, adhesive
+- Delivery receipts and PO numbers
+
+This system will eventually connect to inventory tracking and warehouse logistics, enabling automatic reorder points and vendor management.
+
+### 5. Intelligence System
+
+**Purpose:** Provide operational insights using the data from all other systems.
+
+Key metrics and reports include:
+- Labor cost per job
+- Material cost per job
+- Crew production speed and efficiency
+- Installation rate analytics (sqft/hour)
+- Employee productivity trends
+- Project performance comparisons
+
+The Intelligence System transforms raw operational data into actionable insights that drive better decision-making.
+
+-----
+
+## App Navigation Structure
+
+The main navigation of the application:
+
+| Section | Description |
+|---------|-------------|
+| **Dashboard** | Real-time operational overview |
+| **Jobs** | Project management and job tracking |
+| **Employees** | Workforce management and profiles |
+| **Pay Clock** | Time tracking and clock in/out |
+| **Notepad** | Field notes, daily logs, and deliveries |
+| **Tools** | Field utilities (calculators, checklists) |
+| **Reports** | Analytics and operational reports |
+| **Settings** | App configuration and preferences |
+| **System Info** | Version, modules, and contact information |
+
+The dashboard is designed to always answer three operational questions:
+
+1. **Who is working?** — Active clock-ins and crew status
+2. **What job are they on?** — Current assignments and locations
+3. **What is happening right now?** — Live activity feed and alerts
+
+-----
+
+## Long-Term Vision
+
+InstallOperations is being designed as a scalable platform for field contractors. While it started in the artificial turf industry, the architecture is intentionally general-purpose.
+
+Potential future modules include:
+- **Estimating tools** — Job quoting and bid management
+- **Inventory system** — Warehouse tracking and reorder automation
+- **Client portal** — Customer-facing project updates
+- **AI jobsite assistant** — Natural language queries against operational data
+- **Equipment tracking** — Tool and vehicle management
+- **Contractor analytics** — Industry benchmarking and trend analysis
+- **Mobile offline mode** — Full functionality without connectivity
+
+The long-term goal is to create a **full contractor jobsite operating system** that any field-based company can deploy and customize for their trade.
+
+-----
+
+## Development Philosophy
+
+- **Built by installers, for installers** — Every feature comes from real field experience
+- **Designed around real field workflows** — No theoretical UX; every screen maps to an actual job process
+- **Focused on simplicity and operational clarity** — If it takes more than 3 taps, it needs to be redesigned
+- **Intended to evolve through real jobsite testing** — Features are validated in active field operations before being considered complete
+- **Modular engine architecture** — Each system is an independent module that can be developed, tested, and deployed separately
+
+-----
+
+## Technical Documentation
+
+What follows below is the detailed technical specification and development documentation for the platform.
 
 -----
 

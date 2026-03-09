@@ -9,6 +9,8 @@ import { supabase } from "@/lib/supabase";
 export interface TimeEntryInput {
   user_id: string;
   job_name?: string;
+  job_id?: string;
+  pay_rate_snapshot?: number;
   notes?: string;
 }
 
@@ -35,8 +37,11 @@ export async function clockIn(input: TimeEntryInput) {
     .insert({
       user_id: input.user_id,
       job_name: input.job_name ?? null,
+      job_id: input.job_id ?? null,
+      pay_rate_snapshot: input.pay_rate_snapshot ?? null,
       notes: input.notes ?? null,
       clock_in: new Date().toISOString(),
+      status: "pending",
     })
     .select()
     .single();
@@ -124,6 +129,45 @@ export async function getWeeklySummary(
   }
 
   return Object.values(byUser).sort((a, b) => b.total_minutes - a.total_minutes);
+}
+
+// ── Approval workflow ────────────────────────────────────────────────────────
+
+export async function approveTimeEntry(entryId: string, approvedBy: string) {
+  if (!supabase) throw new Error("Supabase not configured");
+  const { error } = await supabase
+    .from("time_entries")
+    .update({
+      status: "approved",
+      approved_by: approvedBy,
+      approved_at: new Date().toISOString(),
+    })
+    .eq("id", entryId);
+  if (error) throw error;
+}
+
+export async function rejectTimeEntry(entryId: string, approvedBy: string) {
+  if (!supabase) throw new Error("Supabase not configured");
+  const { error } = await supabase
+    .from("time_entries")
+    .update({
+      status: "rejected",
+      approved_by: approvedBy,
+      approved_at: new Date().toISOString(),
+    })
+    .eq("id", entryId);
+  if (error) throw error;
+}
+
+export async function getPendingApprovals(companyId?: string) {
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from("time_entries")
+    .select("*, profiles(full_name, role)")
+    .eq("status", "pending")
+    .not("clock_out", "is", null)
+    .order("clock_in", { ascending: false });
+  return data ?? [];
 }
 
 /** Get the start of the current week (Monday by default) */

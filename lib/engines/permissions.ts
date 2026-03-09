@@ -15,6 +15,7 @@ export type Permission =
   | "edit_job"
   | "delete_job"
   | "manage_employees"
+  | "view_employees"
   | "view_reports"
   | "log_time"
   | "manage_companies"
@@ -27,31 +28,37 @@ export type Permission =
   | "manage_notifications"
   | "view_analytics"
   | "configure_automation"
-  | "access_assistant";
+  | "access_assistant"
+  | "manage_pay_rates"
+  | "approve_time"
+  | "view_payroll"
+  | "manage_payroll";
 
 // Full permission matrix - each role gets an explicit list
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   CreativeEditor: [
     "create_job", "edit_job", "delete_job",
-    "manage_employees", "view_reports", "log_time",
+    "manage_employees", "view_employees", "view_reports", "log_time",
     "manage_companies", "view_activity_log", "manage_settings",
     "create_journal", "delete_journal", "manage_crews",
     "upload_files", "manage_notifications", "view_analytics",
     "configure_automation", "access_assistant",
+    "manage_pay_rates", "approve_time", "view_payroll", "manage_payroll",
   ],
   company_owner: [
     "create_job", "edit_job", "delete_job",
-    "manage_employees", "view_reports", "log_time",
+    "manage_employees", "view_employees", "view_reports", "log_time",
     "view_activity_log", "manage_settings",
     "create_journal", "delete_journal", "manage_crews",
     "upload_files", "manage_notifications", "view_analytics",
+    "manage_pay_rates", "approve_time", "view_payroll", "manage_payroll",
   ],
   field_manager: [
     "create_job", "edit_job",
-    "view_reports", "log_time",
+    "view_employees", "view_reports", "log_time",
     "view_activity_log",
     "create_journal", "manage_crews",
-    "upload_files",
+    "upload_files", "approve_time",
   ],
   employee: [
     "log_time",
