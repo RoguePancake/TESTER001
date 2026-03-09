@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   supabase,
   type DailyLog,
@@ -1065,13 +1065,237 @@ function ChecklistsTab() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// QUICK CAPTURE MODAL
+// ══════════════════════════════════════════════════════════════════════════
+
+type CaptureType = "photo" | "video" | "voice" | "upload" | "text";
+
+interface QuickCapture {
+  type: CaptureType;
+  file: File | null;
+  text: string;
+  job: string;
+}
+
+function QuickCaptureBar() {
+  const [open, setOpen] = useState(false);
+  const [capture, setCapture] = useState<QuickCapture>({ type: "text", file: null, text: "", job: "" });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const photoRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLInputElement>(null);
+  const voiceRef = useRef<HTMLInputElement>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
+
+  function openCapture(type: CaptureType) {
+    setCapture({ type, file: null, text: "", job: "" });
+    setOpen(true);
+    // Immediately trigger file picker for media types
+    setTimeout(() => {
+      if (type === "photo" && photoRef.current) photoRef.current.click();
+      if (type === "video" && videoRef.current) videoRef.current.click();
+      if (type === "voice" && voiceRef.current) voiceRef.current.click();
+      if (type === "upload" && uploadRef.current) uploadRef.current.click();
+    }, 100);
+  }
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) setCapture((prev) => ({ ...prev, file: f }));
+    e.target.value = "";
+  }
+
+  async function handleSave() {
+    if (!capture.text.trim() && !capture.file) return;
+    setSaving(true);
+    try {
+      const body = capture.text.trim() || (capture.file ? capture.file.name : "");
+      const entryType = capture.type === "photo" ? "photo"
+        : capture.type === "video" ? "photo"
+        : capture.type === "voice" ? "voice_memo"
+        : "general";
+
+      if (!isLocal && supabase) {
+        const { data: entry } = await supabase.from("naf_entries").insert({
+          entry_type: entryType,
+          body,
+          job_name: capture.job || null,
+          metadata: { source: "quick_capture", capture_type: capture.type },
+        }).select().single();
+
+        if (entry && capture.file) {
+          const reader = new FileReader();
+          const dataUrl = await new Promise<string>((res) => {
+            reader.onload = () => res(reader.result as string);
+            reader.readAsDataURL(capture.file!);
+          });
+          await supabase.from("naf_attachments").insert({
+            entry_id: entry.id,
+            file_type: entryType,
+            file_name: capture.file.name,
+            file_url: dataUrl,
+            file_size: capture.file.size,
+            mime_type: capture.file.type,
+          });
+        }
+      } else {
+        // Local mode
+        const LS_NAF = "naf_local_entries";
+        const existing = (() => { try { return JSON.parse(localStorage.getItem(LS_NAF) || "[]"); } catch { return []; } })();
+        existing.unshift({
+          id: `local-qc-${Date.now()}`,
+          entry_type: entryType,
+          body,
+          job_name: capture.job || null,
+          metadata: { source: "quick_capture" },
+          pinned: false,
+          created_at: new Date().toISOString(),
+          naf_attachments: [],
+        });
+        localStorage.setItem(LS_NAF, JSON.stringify(existing));
+      }
+
+      setSaved(true);
+      setTimeout(() => { setSaved(false); setOpen(false); }, 1500);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const CAPTURE_BTNS: { type: CaptureType; icon: string; label: string; color: string; bg: string; accept?: string }[] = [
+    { type: "photo", icon: "📷", label: "Photo", color: "text-pink-700", bg: "bg-pink-50 border-pink-200 hover:bg-pink-100", accept: "image/*" },
+    { type: "video", icon: "🎥", label: "Video", color: "text-purple-700", bg: "bg-purple-50 border-purple-200 hover:bg-purple-100", accept: "video/*" },
+    { type: "voice", icon: "🎙️", label: "Voice", color: "text-indigo-700", bg: "bg-indigo-50 border-indigo-200 hover:bg-indigo-100", accept: "audio/*" },
+    { type: "upload", icon: "📁", label: "Upload", color: "text-teal-700", bg: "bg-teal-50 border-teal-200 hover:bg-teal-100" },
+    { type: "text", icon: "✏️", label: "Quick Note", color: "text-gray-700", bg: "bg-gray-100 border-gray-300 hover:bg-gray-200" },
+  ];
+
+  return (
+    <>
+      {/* Hidden file inputs */}
+      <input ref={photoRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      <input ref={videoRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={handleFile} />
+      <input ref={voiceRef} type="file" accept="audio/*" className="hidden" onChange={handleFile} />
+      <input ref={uploadRef} type="file" className="hidden" onChange={handleFile} />
+
+      {/* Quick capture bar */}
+      <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Quick Capture</p>
+        <div className="grid grid-cols-5 gap-2">
+          {CAPTURE_BTNS.map((btn) => (
+            <button
+              key={btn.type}
+              onClick={() => openCapture(btn.type)}
+              className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border transition-all ${btn.bg}`}
+            >
+              <span className="text-2xl">{btn.icon}</span>
+              <span className={`text-xs font-semibold ${btn.color}`}>{btn.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Modal */}
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-4 pb-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{CAPTURE_BTNS.find(b => b.type === capture.type)?.icon}</span>
+                <div>
+                  <h3 className="font-bold text-gray-900">{CAPTURE_BTNS.find(b => b.type === capture.type)?.label}</h3>
+                  <p className="text-xs text-gray-400">Quick capture to field log</p>
+                </div>
+              </div>
+              <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">×</button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* File preview */}
+              {capture.file && (
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-200 flex items-center gap-3">
+                  <div className="text-2xl">
+                    {capture.file.type.startsWith("image/") ? "📸"
+                      : capture.file.type.startsWith("video/") ? "🎬"
+                      : capture.file.type.startsWith("audio/") ? "🎙️"
+                      : "📎"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{capture.file.name}</p>
+                    <p className="text-xs text-gray-400">{(capture.file.size / 1024).toFixed(0)} KB</p>
+                  </div>
+                  <button
+                    onClick={() => setCapture(prev => ({ ...prev, file: null }))}
+                    className="text-gray-400 hover:text-red-500 text-sm"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              {/* Add/change file for media types */}
+              {capture.type !== "text" && (
+                <button
+                  onClick={() => {
+                    if (capture.type === "photo" && photoRef.current) photoRef.current.click();
+                    if (capture.type === "video" && videoRef.current) videoRef.current.click();
+                    if (capture.type === "voice" && voiceRef.current) voiceRef.current.click();
+                    if (capture.type === "upload" && uploadRef.current) uploadRef.current.click();
+                  }}
+                  className="w-full py-2 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-green-400 hover:text-green-600 transition-colors"
+                >
+                  {capture.file ? "Replace file" : "Tap to attach from phone"}
+                </button>
+              )}
+
+              {/* Note text */}
+              <textarea
+                value={capture.text}
+                onChange={(e) => setCapture(prev => ({ ...prev, text: e.target.value }))}
+                placeholder="Add a note... (optional)"
+                rows={3}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+
+              {/* Job site */}
+              <input
+                value={capture.job}
+                onChange={(e) => setCapture(prev => ({ ...prev, job: e.target.value }))}
+                placeholder="Job site (optional)"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+
+              {/* Save button */}
+              {saved ? (
+                <div className="w-full py-3 bg-green-100 text-green-700 rounded-xl text-sm font-bold text-center">
+                  ✅ Saved to feed!
+                </div>
+              ) : (
+                <button
+                  onClick={handleSave}
+                  disabled={saving || (!capture.text.trim() && !capture.file)}
+                  className="w-full py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors"
+                >
+                  {saving ? "Saving…" : "Save to Field Log"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // PAGE
 // ══════════════════════════════════════════════════════════════════════════
 
 const TABS = [
-  { id: "notes", label: "Notes" },
-  { id: "deliveries", label: "Deliveries" },
-  { id: "checklists", label: "Checklists" },
+  { id: "notes", label: "📝 Notes" },
+  { id: "deliveries", label: "📦 Deliveries" },
+  { id: "checklists", label: "✅ Checklists" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -1091,17 +1315,27 @@ export default function NotepadPage() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Notepad</h1>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Field Notepad</h1>
+          <p className="text-sm text-gray-500">Capture notes, deliveries, media, and checklists</p>
+        </div>
+      </div>
 
-      <div className="flex gap-2">
+      {/* Quick Capture Bar */}
+      <QuickCaptureBar />
+
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-gray-200 pb-0">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActive(tab.id)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+            className={`px-4 py-2.5 rounded-t-xl text-sm font-medium transition-colors border-b-2 ${
               active === tab.id
-                ? "bg-green-700 text-white shadow-sm"
-                : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                ? "border-green-600 text-green-700 bg-green-50"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
             }`}
           >
             {tab.label}

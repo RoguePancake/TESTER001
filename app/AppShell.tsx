@@ -22,7 +22,7 @@ interface NavLink {
 }
 
 const ALL_NAV_LINKS: NavLink[] = [
-  { href: "/",          label: "Field Office", icon: "⚡" },
+  { href: "/",          label: "IO Home", icon: "⚡" },
   { href: "/hours",     label: "Pay Clock",    icon: "⏱" },
   { href: "/notepad",   label: "Notepad",      icon: "📋" },
   { href: "/tools",     label: "Tools",        icon: "🔧" },
@@ -181,8 +181,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <header className="app-top-nav sticky top-0 z-50 shadow-md">
         <div className="max-w-5xl mx-auto px-4 flex items-center justify-between h-14 gap-3">
           {/* Brand */}
-          <Link href="/" className="font-bold text-base sm:text-lg tracking-tight flex items-center gap-1.5">
-            🏗 <span>Jobsite Ops</span>
+          <Link href="/" className="font-bold text-base sm:text-lg tracking-tight flex items-center gap-2">
+            <span className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center text-xs font-black">IO</span>
+            <span className="hidden sm:block">Install Ops</span>
           </Link>
 
           {/* Desktop nav */}
