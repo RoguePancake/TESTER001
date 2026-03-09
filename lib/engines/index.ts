@@ -32,3 +32,5 @@ export * from "./notification";
 export * from "./analytics";
 export * from "./automation";
 export * from "./assistant";
+export * from "./employee";
+export * from "./payroll";

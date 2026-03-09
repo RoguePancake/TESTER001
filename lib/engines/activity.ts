@@ -28,7 +28,17 @@ export type ActivityAction =
   | "crew_member_removed"
   | "file_uploaded"
   | "settings_updated"
-  | "company_created";
+  | "company_created"
+  | "employee_updated"
+  | "employee_status_changed"
+  | "pay_rate_created"
+  | "pay_rate_updated"
+  | "job_assignment_created"
+  | "job_assignment_ended"
+  | "time_entry_approved"
+  | "time_entry_rejected"
+  | "payroll_generated"
+  | "payroll_finalized";
 
 export interface ActivityLog {
   id: string;
@@ -137,6 +147,16 @@ export function activityLabel(action: ActivityAction): string {
     file_uploaded: "File uploaded",
     settings_updated: "Settings updated",
     company_created: "Company created",
+    employee_updated: "Employee updated",
+    employee_status_changed: "Employee status changed",
+    pay_rate_created: "Pay rate set",
+    pay_rate_updated: "Pay rate updated",
+    job_assignment_created: "Assigned to job",
+    job_assignment_ended: "Removed from job",
+    time_entry_approved: "Time entry approved",
+    time_entry_rejected: "Time entry rejected",
+    payroll_generated: "Payroll generated",
+    payroll_finalized: "Payroll finalized",
   };
   return labels[action] ?? action;
 }

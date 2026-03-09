@@ -19,6 +19,21 @@ export interface Profile {
   avatar_url?: string | null;
   is_active: boolean;
   created_at: string;
+  // Employee management fields (migration 005)
+  phone?: string | null;
+  hire_date?: string | null;
+  employment_type?: "employee" | "contractor" | "temp";
+  employment_status?: "active" | "inactive" | "terminated" | "on_leave" | "probation";
+  default_pay_rate?: number | null;
+  overtime_rule?: "standard" | "none" | "california" | "custom";
+  overtime_threshold?: number | null;
+  address?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  certifications?: string[];
+  skill_tags?: string[];
+  employee_notes?: string | null;
+  updated_at?: string | null;
 }
 
 export interface TimeEntry {
@@ -31,6 +46,21 @@ export interface TimeEntry {
   notes: string | null;
   created_at: string;
   profiles?: Profile;
+  // Employee management fields (migration 005)
+  job_id?: string | null;
+  pay_rate_snapshot?: number | null;
+  overtime_rate_snapshot?: number | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  status?: "pending" | "approved" | "rejected" | "disputed";
+  work_type?: string | null;
+  travel_time?: number | null;
+  weather?: string | null;
+  equipment_used?: string | null;
+  location_note?: string | null;
+  sqft_completed?: number | null;
+  materials_used?: string | null;
+  updated_at?: string | null;
 }
 
 export interface DailyLog {
@@ -141,6 +171,62 @@ export interface CrewMember {
   crew_id: string;
   user_id: string;
   joined_at: string;
+  crew_role?: "member" | "lead" | "foreman" | "apprentice";
+}
+
+// ── Employee Management types (migration 005) ────────────────────────────────
+
+export interface PayRate {
+  id: string;
+  employee_id: string;
+  rate: number;
+  rate_type: "hourly" | "salary" | "flat" | "per_sqft";
+  effective_date: string;
+  end_date?: string | null;
+  job_id?: string | null;
+  created_by?: string | null;
+  notes?: string | null;
+  created_at: string;
+  // Joined data
+  job_sites?: JobSite;
+  profiles?: Profile;
+}
+
+export interface JobAssignment {
+  id: string;
+  employee_id: string;
+  job_id: string;
+  role_on_job: string;
+  assigned_date: string;
+  end_date?: string | null;
+  assigned_by?: string | null;
+  is_active: boolean;
+  notes?: string | null;
+  created_at: string;
+  // Joined data
+  job_sites?: JobSite;
+  profiles?: Profile;
+}
+
+export interface PayrollSummary {
+  id: string;
+  employee_id: string;
+  period_start: string;
+  period_end: string;
+  regular_hours: number;
+  overtime_hours: number;
+  regular_rate: number;
+  overtime_rate: number;
+  gross_pay: number;
+  total_entries: number;
+  status: "draft" | "pending_review" | "approved" | "finalized" | "paid";
+  notes?: string | null;
+  finalized_by?: string | null;
+  finalized_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  // Joined data
+  profiles?: Profile;
 }
 
 export interface ActivityLog {
