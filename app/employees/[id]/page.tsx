@@ -103,6 +103,9 @@ export default function EmployeeDetailPage() {
   // Can change employment status / role: only managers
   const canManageEmployment = isManager;
 
+  // PDF export
+  const [isPdfExporting, setIsPdfExporting] = useState(false);
+
   // ── Load user context ─────────────────────────────────────────────
   useEffect(() => {
     if (isLocalMode) {
@@ -229,6 +232,34 @@ export default function EmployeeDetailPage() {
   weekStart.setHours(0, 0, 0, 0);
   const weekEntries = completedEntries.filter((e) => new Date(e.clock_in) >= weekStart);
   const weekHours = weekEntries.reduce((sum, e) => sum + totalHours(e), 0);
+
+  async function handleExportHoursPDF() {
+    if (!employee || completedEntries.length === 0) return;
+    setIsPdfExporting(true);
+    try {
+      const { downloadTimesheetPDF } = await import("@/lib/engines/pdf");
+      const { calcDurationMinutes } = await import("@/lib/engines/time");
+      const totalMins = completedEntries.reduce(
+        (sum, e) => sum + calcDurationMinutes(e.clock_in, e.clock_out ?? undefined, e.break_minutes ?? 0),
+        0
+      );
+      const otThresholdMins = (employee.overtime_threshold ?? 40) * 60;
+      const regularMins = Math.min(totalMins, otThresholdMins);
+      const overtimeMins = Math.max(0, totalMins - otThresholdMins);
+      const sorted = [...completedEntries].sort((a, b) => a.clock_in.localeCompare(b.clock_in));
+      await downloadTimesheetPDF({
+        employeeName: employee.full_name,
+        periodStart: sorted[0].clock_in.split("T")[0],
+        periodEnd: sorted[sorted.length - 1].clock_in.split("T")[0],
+        entries: completedEntries,
+        regularHours: Math.round((regularMins / 60) * 100) / 100,
+        overtimeHours: Math.round((overtimeMins / 60) * 100) / 100,
+        payRate: employee.default_pay_rate ?? undefined,
+      });
+    } finally {
+      setIsPdfExporting(false);
+    }
+  }
 
   const inputCls = "w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500";
   const labelCls = "block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1";
@@ -745,7 +776,18 @@ export default function EmployeeDetailPage() {
       {activeTab === "hours" && (
         <div className="space-y-4">
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Recent Time Entries</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 dark:text-white">Recent Time Entries</h3>
+              {completedEntries.length > 0 && (
+                <button
+                  onClick={handleExportHoursPDF}
+                  disabled={isPdfExporting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+                >
+                  {isPdfExporting ? "Generating…" : "Export PDF"}
+                </button>
+              )}
+            </div>
             {completedEntries.length === 0 ? (
               <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">No time entries found.</p>
             ) : (
