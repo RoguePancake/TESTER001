@@ -5,7 +5,8 @@
  */
 
 import { supabase } from "@/lib/supabase";
-import { notifyMissingClockOut, notifyTimeReminder } from "./notification";
+import { sendNotification, notifyMissingClockOut, notifyTimeReminder } from "./notification";
+import { logActivity } from "./activity";
 
 export type TriggerEvent =
   | "end_of_day"
@@ -84,16 +85,78 @@ export async function runDailyTimeReminder(companyId?: string): Promise<void> {
 
 /**
  * Dispatch an event to all active automation rules.
- * Currently a stub - future implementation will load rules from DB.
+ * Loads matching rules from the automation_rules table and executes their actions.
  */
 export async function dispatchEvent(
   event: TriggerEvent,
   payload: Record<string, unknown> = {}
 ): Promise<void> {
-  // TODO: Load automation rules from `automation_rules` table and execute them
-  // For now, log the event for debugging
   if (process.env.NODE_ENV === "development") {
     console.log(`[AutomationEngine] Event: ${event}`, payload);
+  }
+
+  if (!supabase) return;
+
+  try {
+    // Load active rules matching this trigger
+    const { data: rules } = await supabase
+      .from("automation_rules")
+      .select("*")
+      .eq("trigger", event)
+      .eq("is_active", true);
+
+    if (!rules || rules.length === 0) return;
+
+    for (const rule of rules as AutomationRule[]) {
+      await safeRun(() => executeRule(rule, payload), `rule:${rule.name}`);
+    }
+  } catch (err) {
+    console.error(`[AutomationEngine] Failed to dispatch event ${event}:`, err);
+  }
+}
+
+/**
+ * Execute a single automation rule based on its action type.
+ */
+async function executeRule(
+  rule: AutomationRule,
+  payload: Record<string, unknown>
+): Promise<void> {
+  const config = rule.config ?? {};
+
+  switch (rule.action) {
+    case "send_notification": {
+      const userId = (payload.user_id ?? config.user_id) as string | undefined;
+      const title = (config.title as string) ?? rule.name;
+      const body = (config.body as string) ?? `Automation triggered: ${rule.name}`;
+      const notifType = (config.notification_type as string) ?? "system_alert";
+      const link = config.link as string | undefined;
+      if (userId) {
+        await sendNotification(userId, notifType as import("./notification").NotificationType, title, body, link);
+      }
+      break;
+    }
+    case "check_missing_clock_out": {
+      await runMissingClockOutCheck();
+      break;
+    }
+    case "send_time_reminder": {
+      const companyId = (payload.company_id ?? config.company_id) as string | undefined;
+      await runDailyTimeReminder(companyId);
+      break;
+    }
+    case "log_activity": {
+      await logActivity({
+        action: (config.activity_action as import("./activity").ActivityAction) ?? "settings_updated",
+        resource_type: (config.resource_type as string) ?? "automation",
+        resource_id: rule.id,
+        metadata: { rule_name: rule.name, trigger: rule.trigger, payload },
+      });
+      break;
+    }
+    default: {
+      console.warn(`[AutomationEngine] Unknown action "${rule.action}" for rule "${rule.name}"`);
+    }
   }
 }
 

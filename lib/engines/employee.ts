@@ -5,6 +5,7 @@
  */
 
 import { supabase, type Profile, type PayRate, type JobAssignment } from "@/lib/supabase";
+import { logActivity } from "./activity";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,6 +98,12 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<Profil
     .select()
     .single();
   if (error) throw error;
+  logActivity({
+    action: "user_created",
+    resource_type: "profile",
+    resource_id: data.id,
+    new_data: { full_name: input.full_name, role: input.role },
+  });
   return data as Profile;
 }
 
@@ -109,6 +116,12 @@ export async function updateEmployee(id: string, updates: UpdateEmployeeInput): 
     .select()
     .single();
   if (error) throw error;
+  logActivity({
+    action: "employee_updated",
+    resource_type: "profile",
+    resource_id: id,
+    new_data: updates as Record<string, unknown>,
+  });
   return data as Profile;
 }
 

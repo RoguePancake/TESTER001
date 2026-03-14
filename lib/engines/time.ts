@@ -5,6 +5,8 @@
  */
 
 import { supabase } from "@/lib/supabase";
+import { logActivity } from "./activity";
+import { dispatchEvent } from "./automation";
 
 export interface TimeEntryInput {
   user_id: string;
@@ -46,6 +48,14 @@ export async function clockIn(input: TimeEntryInput) {
     .select()
     .single();
   if (error) throw error;
+  logActivity({
+    actor_id: input.user_id,
+    action: "time_clocked_in",
+    resource_type: "time_entry",
+    resource_id: data.id,
+    new_data: { job_name: input.job_name, job_id: input.job_id },
+  });
+  dispatchEvent("employee_clocked_in", { user_id: input.user_id, entry_id: data.id });
   return data;
 }
 
@@ -61,6 +71,13 @@ export async function clockOut(entryId: string, breakMinutes = 0) {
     .select()
     .single();
   if (error) throw error;
+  logActivity({
+    action: "time_clocked_out",
+    resource_type: "time_entry",
+    resource_id: entryId,
+    new_data: { break_minutes: breakMinutes },
+  });
+  dispatchEvent("employee_clocked_out", { entry_id: entryId });
   return data;
 }
 

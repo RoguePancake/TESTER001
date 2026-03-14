@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logActivity } from "@/lib/engines/activity";
 
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -102,6 +103,16 @@ export async function PATCH(req: NextRequest) {
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Log activity
+    logActivity({
+      actor_id: auth.profileId,
+      action: "employee_updated",
+      resource_type: "profile",
+      resource_id: profileId,
+      new_data: updates,
+    });
+
     return NextResponse.json(data);
   } catch (err: unknown) {
     return NextResponse.json(
