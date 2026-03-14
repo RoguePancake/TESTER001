@@ -7,6 +7,7 @@ import {
   type Profile,
   type JobSite,
 } from "@/lib/supabase";
+import { calcDurationMinutes } from "@/lib/engines/time";
 
 // ── localStorage keys ─────────────────────────────────────────────────────
 const LS_ENTRIES = "payclock_entries";
@@ -186,6 +187,9 @@ export default function PayClockPage() {
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterWorkType, setFilterWorkType] = useState("");
+
+  // PDF export
+  const [isPdfExporting, setIsPdfExporting] = useState(false);
 
   // View mode
   const [viewMode, setViewMode] = useState<"active" | "weekly" | "timesheet">("active");
@@ -527,6 +531,36 @@ export default function PayClockPage() {
     }
     return true;
   });
+
+  async function handleExportTimesheetPDF() {
+    if (filteredCompleted.length === 0) return;
+    setIsPdfExporting(true);
+    try {
+      const { downloadTimesheetPDF } = await import("@/lib/engines/pdf");
+      const totalMins = filteredCompleted.reduce(
+        (sum, e) => sum + calcDurationMinutes(e.clock_in, e.clock_out ?? undefined, e.break_minutes ?? 0),
+        0
+      );
+      const OT_THRESHOLD = 2400; // 40 hours in minutes
+      const regularMins = Math.min(totalMins, OT_THRESHOLD);
+      const overtimeMins = Math.max(0, totalMins - OT_THRESHOLD);
+      const periodStart = filterDateFrom || filteredCompleted[filteredCompleted.length - 1]?.clock_in.split("T")[0] || new Date().toISOString().split("T")[0];
+      const periodEnd = filterDateTo || filteredCompleted[0]?.clock_in.split("T")[0] || new Date().toISOString().split("T")[0];
+      const employeeName = filterName || "All Employees";
+      const grossPay = filteredCompleted.reduce((sum, e) => sum + (calcGrossPay(e) || 0), 0) || undefined;
+      await downloadTimesheetPDF({
+        employeeName,
+        periodStart,
+        periodEnd,
+        entries: filteredCompleted as unknown as import("@/lib/supabase").TimeEntry[],
+        regularHours: Math.round((regularMins / 60) * 100) / 100,
+        overtimeHours: Math.round((overtimeMins / 60) * 100) / 100,
+        grossPay,
+      });
+    } finally {
+      setIsPdfExporting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -1181,7 +1215,7 @@ export default function PayClockPage() {
               )}
               <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between flex-wrap gap-2">
                 <span className="text-xs text-gray-400">{filteredCompleted.length} entries</span>
-                <div className="flex gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   <span className="text-sm font-semibold text-green-700">
                     Total: {filteredCompleted.reduce((sum, e) => sum + totalHours(e), 0).toFixed(1)} hrs
                   </span>
@@ -1195,6 +1229,13 @@ export default function PayClockPage() {
                       Sqft: {filteredCompleted.reduce((sum, e) => sum + (e.sqft_completed || 0), 0).toFixed(0)}
                     </span>
                   )}
+                  <button
+                    onClick={handleExportTimesheetPDF}
+                    disabled={isPdfExporting || filteredCompleted.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+                  >
+                    {isPdfExporting ? "Generating…" : "Export PDF"}
+                  </button>
                 </div>
               </div>
             </div>

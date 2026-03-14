@@ -27,6 +27,7 @@ const ALL_NAV_LINKS: NavLink[] = [
   { href: "/notepad",   label: "Notepad",      icon: "📋" },
   { href: "/tools",     label: "Tools",        icon: "🔧" },
   { href: "/employees", label: "Employees",    icon: "👥", minRole: "field_manager" },
+  { href: "/reports",   label: "Reports",      icon: "📊", minRole: "field_manager" },
   { href: "/settings",  label: "Settings",     icon: "⚙️" },
   { href: "/system",    label: "System Info",  icon: "ℹ️" },
   { href: "/admin",     label: "Admin",        icon: "🛠", minRole: "company_owner" },
@@ -53,6 +54,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [userName, setUserName] = useState<string>("");
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
   const [authChecked, setAuthChecked] = useState(false);
   const [localSession, setLocalSessionState] = useState<LocalAuthSession | null>(null);
 
@@ -139,6 +141,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, [userRole]);
 
+  // Poll pending approvals count (managers only, every 60s)
+  useEffect(() => {
+    if (!userRole || !isManagerOrAbove(userRole)) return;
+    const fetchPending = async () => {
+      if (supabase) {
+        const { count } = await supabase
+          .from("time_entries")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending")
+          .not("clock_out", "is", null);
+        setPendingApprovalsCount(count ?? 0);
+      }
+    };
+    fetchPending();
+    const interval = setInterval(fetchPending, 60_000);
+    return () => clearInterval(interval);
+  }, [userRole]);
+
   const handleSignOut = async () => {
     if (isLocal) {
       clearLocalSession();
@@ -194,13 +214,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                className={`relative px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   pathname === link.href
                     ? "bg-white/25 font-semibold"
                     : "hover:bg-white/15"
                 }`}
               >
                 {link.icon} <span>{link.label}</span>
+                {link.href === "/hours" && pendingApprovalsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-yellow-400 text-yellow-900 rounded-full">
+                    {pendingApprovalsCount > 9 ? "9+" : pendingApprovalsCount}
+                  </span>
+                )}
               </Link>
             ))}
           </nav>
@@ -250,7 +275,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               key={link.href}
               href={link.href}
-              className={`flex flex-col items-center justify-center gap-1 py-1 text-xs font-medium rounded-lg transition-colors ${
+              className={`relative flex flex-col items-center justify-center gap-1 py-1 text-xs font-medium rounded-lg transition-colors ${
                 pathname === link.href
                   ? "bg-white/20 font-semibold"
                   : "hover:bg-white/10"
@@ -258,6 +283,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             >
               <span className="text-base leading-none">{link.icon}</span>
               <span className="truncate">{link.label}</span>
+              {link.href === "/hours" && pendingApprovalsCount > 0 && (
+                <span className="absolute top-0.5 right-1 inline-flex items-center justify-center min-w-[14px] h-3.5 px-1 text-[9px] font-bold bg-yellow-400 text-yellow-900 rounded-full">
+                  {pendingApprovalsCount > 9 ? "9+" : pendingApprovalsCount}
+                </span>
+              )}
             </Link>
           ))}
         </div>
