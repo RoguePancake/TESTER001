@@ -202,6 +202,9 @@ export default function FieldOffice() {
   const [clockUser, setClockUser] = useState("");
   const [clockNotes, setClockNotes] = useState("");
 
+  // composer collapsed state
+  const [showComposer, setShowComposer] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -728,176 +731,103 @@ export default function FieldOffice() {
 
   return (
     <div className="space-y-4">
-      {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Install Operations
-          </h1>
-          <p className="text-sm text-gray-500">{today}</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowClockIn(!showClockIn)}
-            className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
-          >
-            {activeClocks.length > 0
-              ? `⏱ ${activeClocks.length} On Clock`
-              : "⏱ Clock In"}
-          </button>
-          <Link
-            href="/settings"
-            className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition-colors flex items-center"
-          >
-            ⚙️
-          </Link>
-        </div>
-      </div>
 
-      {/* ── Stats Strip ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-brand-600 text-white rounded-xl p-3 text-center shadow-sm">
-          <div className="text-2xl font-bold">{activeClocks.length}</div>
-          <div className="text-xs opacity-80">On Clock</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
-          <div className="text-2xl font-bold text-gray-900">
-            {weekHours.toFixed(1)}
-          </div>
-          <div className="text-xs text-gray-500">Week Hours</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
-          <div className="text-2xl font-bold text-gray-900">
-            {todayDeliveries.length}
-          </div>
-          <div className="text-xs text-gray-500">Deliveries Today</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
-          <div className="text-2xl font-bold text-gray-900">
-            {todayLogs.length}
-          </div>
-          <div className="text-xs text-gray-500">Notes Today</div>
-        </div>
-      </div>
-
-      {/* ── Clock-In Quick Panel ───────────────────────────────────────── */}
+      {/* ── Clock-In Modal ─────────────────────────────────────────────── */}
       {showClockIn && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-green-800">
-              Quick Clock In / Out
-            </h3>
-            <button
-              onClick={() => setShowClockIn(false)}
-              className="text-green-600 hover:text-green-800 text-sm"
-            >
-              Close ×
-            </button>
-          </div>
-
-          {/* Active clocks list */}
-          {activeClocks.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-green-700">
-                Currently Clocked In ({activeClocks.length})
-              </p>
-              {activeClocks.map((t) => {
-                const dur =
-                  Date.now() - new Date(t.clock_in).getTime();
-                return (
-                  <div
-                    key={t.id}
-                    className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-green-100"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-green-500">●</span>
-                      <span className="font-medium text-sm">
-                        {t.profiles?.full_name || "—"}
-                      </span>
-                      {t.job_name && (
-                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                          {t.job_name}
-                        </span>
-                      )}
-                      <span className="text-xs text-gray-500 font-mono">
-                        {formatDuration(dur)}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        since {formatTime(t.clock_in)}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => handleClockOut(t.id)}
-                      className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-lg hover:bg-red-200 font-medium"
-                    >
-                      Clock Out
-                    </button>
-                  </div>
-                );
-              })}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowClockIn(false); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-bold text-lg text-gray-900">Clock In / Out</h3>
+              <button
+                onClick={() => setShowClockIn(false)}
+                className="text-gray-400 hover:text-gray-700 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100"
+              >
+                ×
+              </button>
             </div>
-          )}
 
-          {/* New clock-in form */}
-          <div className="border-t border-green-200 pt-3">
-            <p className="text-xs font-medium text-green-700 mb-2">
-              New Clock In
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-              <div>
-                <label className="text-xs text-green-700 font-medium">
-                  Crew Member *
-                </label>
-                <select
-                  value={clockUser}
-                  onChange={(e) => setClockUser(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5"
-                >
-                  <option value="">Select...</option>
-                  {profiles
-                    .filter(
-                      (p) =>
-                        !activeClocks.some(
-                          (a) => a.user_id === p.id
-                        )
-                    )
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.full_name} ({p.role})
-                      </option>
-                    ))}
-                </select>
+            {/* Active clocks */}
+            {activeClocks.length > 0 && (
+              <div className="mb-5">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Currently On Clock ({activeClocks.length})
+                </p>
+                <div className="space-y-2">
+                  {activeClocks.map((t) => {
+                    const dur = Date.now() - new Date(t.clock_in).getTime();
+                    return (
+                      <div key={t.id} className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-green-500 text-sm">●</span>
+                          <span className="font-semibold text-sm text-gray-900">{t.profiles?.full_name || "—"}</span>
+                          {t.job_name && (
+                            <span className="text-xs bg-white border border-gray-200 px-2 py-0.5 rounded-lg text-gray-600">{t.job_name}</span>
+                          )}
+                          <span className="text-xs text-gray-500 font-mono">{formatDuration(dur)}</span>
+                          <span className="text-xs text-gray-400">since {formatTime(t.clock_in)}</span>
+                        </div>
+                        <button
+                          onClick={() => handleClockOut(t.id)}
+                          className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200 font-semibold shrink-0 ml-2"
+                        >
+                          Clock Out
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-green-700 font-medium">
-                  Job Site
-                </label>
-                <input
-                  value={clockJob}
-                  onChange={(e) => setClockJob(e.target.value)}
-                  placeholder="Job name..."
-                  className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5"
-                  list="job-sites-list"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-green-700 font-medium">
-                  Notes
-                </label>
-                <input
-                  value={clockNotes}
-                  onChange={(e) => setClockNotes(e.target.value)}
-                  placeholder="Optional notes..."
-                  className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5"
-                />
-              </div>
-              <div className="flex items-end">
+            )}
+
+            {/* New clock-in form */}
+            <div className={activeClocks.length > 0 ? "border-t border-gray-100 pt-5" : ""}>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">New Clock In</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Crew Member *</label>
+                  <select
+                    value={clockUser}
+                    onChange={(e) => setClockUser(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="">Select crew member...</option>
+                    {profiles
+                      .filter((p) => !activeClocks.some((a) => a.user_id === p.id))
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>{p.full_name} ({p.role})</option>
+                      ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Job Site</label>
+                    <input
+                      value={clockJob}
+                      onChange={(e) => setClockJob(e.target.value)}
+                      placeholder="Job name..."
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      list="job-sites-list"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Notes</label>
+                    <input
+                      value={clockNotes}
+                      onChange={(e) => setClockNotes(e.target.value)}
+                      placeholder="Optional..."
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                </div>
                 <button
                   onClick={handleClockIn}
                   disabled={!clockUser}
-                  className="w-full px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-green-700"
+                  className="w-full py-3 bg-green-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50 hover:bg-green-700 transition-colors"
                 >
-                  ✅ Clock In
+                  Clock In
                 </button>
               </div>
             </div>
@@ -905,281 +835,232 @@ export default function FieldOffice() {
         </div>
       )}
 
-      {/* ── NAF Composer (Entry-First) ─────────────────────────────────── */}
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Field Office</h1>
+          <p className="text-sm text-gray-400">{today}</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowClockIn(true)}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 ${
+              activeClocks.length > 0
+                ? "bg-green-600 text-white hover:bg-green-700"
+                : "bg-brand-600 text-white hover:bg-brand-700"
+            }`}
+          >
+            {activeClocks.length > 0 ? (
+              <>
+                <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                {activeClocks.length} On Clock
+              </>
+            ) : (
+              "⏱ Clock In"
+            )}
+          </button>
+          <Link
+            href="/settings"
+            className="p-2 bg-gray-100 text-gray-600 rounded-xl text-sm hover:bg-gray-200 transition-colors flex items-center"
+          >
+            ⚙️
+          </Link>
+        </div>
+      </div>
+
+      {/* ── Stats Strip ────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-4 gap-2">
+        <div
+          onClick={() => setShowClockIn(true)}
+          className="bg-green-600 text-white rounded-xl p-3 text-center shadow-sm cursor-pointer hover:bg-green-700 transition-colors"
+        >
+          <div className="text-xl font-bold">{activeClocks.length}</div>
+          <div className="text-xs opacity-80 mt-0.5">On Clock</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+          <div className="text-xl font-bold text-gray-900">{weekHours.toFixed(1)}</div>
+          <div className="text-xs text-gray-400 mt-0.5">Wk Hours</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+          <div className="text-xl font-bold text-gray-900">{todayDeliveries.length}</div>
+          <div className="text-xs text-gray-400 mt-0.5">Deliveries</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 text-center shadow-sm">
+          <div className="text-xl font-bold text-gray-900">{allFeed.length}</div>
+          <div className="text-xs text-gray-400 mt-0.5">Feed Items</div>
+        </div>
+      </div>
+
+      {/* ── NAF Composer ───────────────────────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        {/* Type selector bar */}
-        <div className="flex items-center gap-1 px-3 pt-3 pb-1 border-b border-gray-100 flex-wrap">
-          <div className="relative">
-            <button
-              onClick={() => setShowTypeMenu(!showTypeMenu)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                ENTRY_TYPE_CONFIG[composerType]?.bg || "bg-gray-100"
-              } ${
-                ENTRY_TYPE_CONFIG[composerType]?.color ||
-                "text-gray-700"
-              }`}
-            >
-              {ENTRY_TYPE_CONFIG[composerType]?.icon}{" "}
-              {ENTRY_TYPE_CONFIG[composerType]?.label || "Note"} ▾
-            </button>
-            {showTypeMenu && (
-              <div className="absolute top-full left-0 mt-1 bg-white border rounded-lg shadow-lg z-20 py-1 w-48">
-                {Object.entries(ENTRY_TYPE_CONFIG).map(
-                  ([key, cfg]) => (
-                    <button
-                      key={key}
-                      onClick={() => {
-                        setComposerType(key);
-                        setShowTypeMenu(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${
-                        composerType === key
-                          ? "bg-gray-50 font-medium"
-                          : ""
-                      }`}
-                    >
-                      <span>{cfg.icon}</span>
-                      <span>{cfg.label}</span>
-                    </button>
-                  )
+        {!showComposer ? (
+          /* Collapsed prompt */
+          <button
+            onClick={() => setShowComposer(true)}
+            className="w-full px-4 py-3.5 text-left text-sm text-gray-400 hover:bg-gray-50 transition-colors flex items-center gap-3"
+          >
+            <span className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-base shrink-0">✏️</span>
+            <span>What&apos;s happening on the jobsite?</span>
+            <span className="ml-auto text-xs font-medium text-brand-600 border border-brand-200 px-3 py-1 rounded-lg">
+              Post
+            </span>
+          </button>
+        ) : (
+          <>
+            {/* Type selector + meta bar */}
+            <div className="flex items-center gap-1.5 px-3 pt-3 pb-2 border-b border-gray-100 flex-wrap">
+              <div className="relative">
+                <button
+                  onClick={() => setShowTypeMenu(!showTypeMenu)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    ENTRY_TYPE_CONFIG[composerType]?.bg || "bg-gray-100"
+                  } ${ENTRY_TYPE_CONFIG[composerType]?.color || "text-gray-700"}`}
+                >
+                  {ENTRY_TYPE_CONFIG[composerType]?.icon} {ENTRY_TYPE_CONFIG[composerType]?.label || "Note"} ▾
+                </button>
+                {showTypeMenu && (
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1 w-48">
+                    {Object.entries(ENTRY_TYPE_CONFIG).map(([key, cfg]) => (
+                      <button
+                        key={key}
+                        onClick={() => { setComposerType(key); setShowTypeMenu(false); }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 ${composerType === key ? "bg-gray-50 font-medium" : ""}`}
+                      >
+                        <span>{cfg.icon}</span>
+                        <span>{cfg.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-
-          {/* Job tag */}
-          <input
-            value={composerJob}
-            onChange={(e) => setComposerJob(e.target.value)}
-            placeholder="Job site..."
-            className="px-2 py-1.5 text-xs border rounded-lg bg-gray-50 w-32"
-            list="job-sites-list"
-          />
-
-          {/* User selector */}
-          <select
-            value={composerUser}
-            onChange={(e) => setComposerUser(e.target.value)}
-            className="px-2 py-1.5 text-xs border rounded-lg bg-gray-50"
-          >
-            <option value="">Posted by...</option>
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.full_name}
-              </option>
-            ))}
-          </select>
-
-          {postSuccess && (
-            <span className="text-xs text-green-600 font-medium ml-auto">
-              ✅ Posted!
-            </span>
-          )}
-        </div>
-
-        {/* Text input area */}
-        <textarea
-          ref={textareaRef}
-          value={composerText}
-          onChange={handleTextareaChange}
-          placeholder="What's happening on the jobsite? Log a note, delivery, update, anything..."
-          className="w-full px-4 py-3 text-sm resize-none focus:outline-none min-h-[80px]"
-          rows={3}
-        />
-
-        {/* Attachment previews */}
-        {attachments.length > 0 && (
-          <div className="px-4 pb-2 flex gap-2 flex-wrap">
-            {attachments.map((f, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs"
+              <input
+                value={composerJob}
+                onChange={(e) => setComposerJob(e.target.value)}
+                placeholder="Job site..."
+                className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 w-32"
+                list="job-sites-list"
+              />
+              <select
+                value={composerUser}
+                onChange={(e) => setComposerUser(e.target.value)}
+                className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50"
               >
-                <span>
-                  {f.type.startsWith("image/")
-                    ? "📸"
-                    : f.type.startsWith("video/")
-                    ? "🎬"
-                    : f.type.startsWith("audio/")
-                    ? "🎙️"
-                    : "📎"}
-                </span>
-                <span className="max-w-[100px] truncate">
-                  {f.name}
-                </span>
-                <span className="text-gray-400">
-                  ({(f.size / 1024).toFixed(0)}KB)
-                </span>
-                <button
-                  onClick={() =>
-                    setAttachments((prev) =>
-                      prev.filter((_, j) => j !== i)
-                    )
-                  }
-                  className="text-gray-400 hover:text-red-500 ml-1"
-                >
-                  ×
-                </button>
+                <option value="">Posted by...</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.full_name}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => { setShowComposer(false); setShowTypeMenu(false); }}
+                className="ml-auto text-gray-300 hover:text-gray-500 text-lg leading-none px-1"
+              >
+                ×
+              </button>
+              {postSuccess && (
+                <span className="text-xs text-green-600 font-medium">✅ Posted!</span>
+              )}
+            </div>
+
+            {/* Textarea */}
+            <textarea
+              ref={textareaRef}
+              value={composerText}
+              onChange={handleTextareaChange}
+              placeholder="What's happening on the jobsite? Log a note, delivery, update, anything..."
+              className="w-full px-4 py-3 text-sm resize-none focus:outline-none min-h-[80px]"
+              rows={3}
+              autoFocus
+            />
+
+            {/* Attachments */}
+            {attachments.length > 0 && (
+              <div className="px-4 pb-2 flex gap-2 flex-wrap">
+                {attachments.map((f, i) => (
+                  <div key={i} className="flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1 text-xs">
+                    <span>{f.type.startsWith("image/") ? "📸" : f.type.startsWith("video/") ? "🎬" : f.type.startsWith("audio/") ? "🎙️" : "📎"}</span>
+                    <span className="max-w-[100px] truncate">{f.name}</span>
+                    <span className="text-gray-400">({(f.size / 1024).toFixed(0)}KB)</span>
+                    <button
+                      onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-gray-400 hover:text-red-500 ml-1"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+
+            {/* Action bar */}
+            <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50">
+              <div className="flex gap-0.5">
+                <button onClick={() => handleFileSelect("image/*")} className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors" title="Photo">📸</button>
+                <button onClick={() => handleFileSelect("video/*")} className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors" title="Video">🎬</button>
+                <button onClick={() => handleFileSelect("audio/*")} className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors" title="Voice Memo">🎙️</button>
+                <button onClick={() => handleFileSelect()} className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors" title="File">📎</button>
+              </div>
+              <button
+                onClick={handlePost}
+                disabled={posting || (!composerText.trim() && attachments.length === 0)}
+                className="px-5 py-2 bg-brand-600 text-white rounded-lg text-sm font-semibold disabled:opacity-40 hover:bg-brand-700 transition-colors"
+              >
+                {posting ? "Posting..." : "Post to Feed"}
+              </button>
+            </div>
+          </>
         )}
 
-        {/* Action bar */}
-        <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50">
-          <div className="flex gap-1">
-            <button
-              onClick={() => handleFileSelect("image/*")}
-              className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
-              title="Attach Photo"
-            >
-              📸
-              <span className="sr-only">Photo</span>
-            </button>
-            <button
-              onClick={() => handleFileSelect("video/*")}
-              className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
-              title="Attach Video"
-            >
-              🎬
-              <span className="sr-only">Video</span>
-            </button>
-            <button
-              onClick={() => handleFileSelect("audio/*")}
-              className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
-              title="Voice Memo"
-            >
-              🎙️
-              <span className="sr-only">Voice Memo</span>
-            </button>
-            <button
-              onClick={() => handleFileSelect()}
-              className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 transition-colors"
-              title="Upload File"
-            >
-              📎
-              <span className="sr-only">Upload</span>
-            </button>
-          </div>
-          <button
-            onClick={handlePost}
-            disabled={
-              posting ||
-              (!composerText.trim() && attachments.length === 0)
-            }
-            className="px-5 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium disabled:opacity-40 hover:bg-brand-700 transition-colors"
-          >
-            {posting ? "Posting..." : "Post to Feed"}
-          </button>
-        </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          multiple
-          onChange={handleFilesAdded}
-        />
-      </div>
-
-      {/* ── Quick Actions Strip ────────────────────────────────────────── */}
-      <div className="grid grid-cols-5 gap-2">
-        <Link
-          href="/hours"
-          className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
-        >
-          <div className="text-xl">⏱</div>
-          <div className="text-xs text-gray-600 mt-1">Pay Clock</div>
-        </Link>
-        <Link
-          href="/notepad"
-          className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
-        >
-          <div className="text-xl">📋</div>
-          <div className="text-xs text-gray-600 mt-1">Notepad</div>
-        </Link>
-        <Link
-          href="/notepad?tab=deliveries"
-          className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
-        >
-          <div className="text-xl">📦</div>
-          <div className="text-xs text-gray-600 mt-1">Deliveries</div>
-        </Link>
-        <Link
-          href="/tools"
-          className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
-        >
-          <div className="text-xl">🔧</div>
-          <div className="text-xs text-gray-600 mt-1">Tools</div>
-        </Link>
-        <Link
-          href="/settings"
-          className="bg-white border border-gray-200 rounded-xl p-3 text-center hover:border-brand-500 hover:shadow-sm transition-all"
-        >
-          <div className="text-xl">⚙️</div>
-          <div className="text-xs text-gray-600 mt-1">Settings</div>
-        </Link>
-      </div>
-
-      {/* ── Feed Filter & Search ───────────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex gap-1 flex-wrap flex-1">
-          {[
-            { key: "all", label: "All" },
-            { key: "general", label: "💬 Notes" },
-            { key: "note", label: "📝 Field" },
-            { key: "clock_in", label: "🟢 In" },
-            { key: "clock_out", label: "🔴 Out" },
-            { key: "delivery", label: "📦 Deliv" },
-            { key: "photo", label: "📸 Photo" },
-            { key: "voice_memo", label: "🎙️ Voice" },
-            { key: "file_upload", label: "📎 Files" },
-          ].map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFeedFilter(f.key)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                feedFilter === f.key
-                  ? "bg-brand-600 text-white"
-                  : "bg-white border text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search feed..."
-          className="border rounded-lg px-3 py-1.5 text-sm w-44"
-        />
+        <input ref={fileInputRef} type="file" className="hidden" multiple onChange={handleFilesAdded} />
       </div>
 
       {/* ── Activity Feed ──────────────────────────────────────────────── */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-gray-800">
-            Activity Feed
-            <span className="text-xs text-gray-400 font-normal ml-2">
-              {filteredFeed.length} items
-            </span>
+      <div className="space-y-3">
+        {/* Feed header + filter + search */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="font-semibold text-gray-800 shrink-0">
+            Activity
+            <span className="text-xs text-gray-400 font-normal ml-1.5">{filteredFeed.length}</span>
           </h2>
-          <button
-            onClick={fetchAll}
-            className="text-xs text-brand-600 hover:text-brand-700"
-          >
-            ↻ Refresh
-          </button>
+          <div className="flex gap-1 flex-wrap flex-1">
+            {[
+              { key: "all", label: "All" },
+              { key: "general", label: "💬" },
+              { key: "note", label: "📝" },
+              { key: "clock_in", label: "🟢" },
+              { key: "clock_out", label: "🔴" },
+              { key: "delivery", label: "📦" },
+              { key: "photo", label: "📸" },
+            ].map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setFeedFilter(f.key)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                  feedFilter === f.key
+                    ? "bg-brand-600 text-white"
+                    : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search..."
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-32 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          <button onClick={fetchAll} className="text-xs text-gray-400 hover:text-brand-600 shrink-0">↻</button>
         </div>
 
+        {/* Feed items */}
         {filteredFeed.length === 0 && (
-          <div className="text-center py-12 text-gray-400 bg-white rounded-xl border border-gray-200">
-            <div className="text-4xl mb-2">📋</div>
+          <div className="text-center py-16 text-gray-400 bg-white rounded-xl border border-gray-200">
+            <div className="text-4xl mb-3">📋</div>
             <p className="text-sm">
               {searchQuery || feedFilter !== "all"
-                ? "No matching entries found."
-                : "No activity yet. Post something to get started!"}
+                ? "No matching entries."
+                : "No activity yet. Post something above!"}
             </p>
           </div>
         )}
@@ -1197,38 +1078,24 @@ export default function FieldOffice() {
                     {item.title}
                   </span>
                   {item.pinned && (
-                    <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full font-medium">
-                      📌 Pinned
-                    </span>
+                    <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full font-medium">📌 Pinned</span>
                   )}
                   {item.job && (
-                    <span className="text-xs bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full text-gray-700 font-medium">
-                      {item.job}
-                    </span>
+                    <span className="text-xs bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full text-gray-700 font-medium">{item.job}</span>
                   )}
                   {item.user && (
                     <span className="text-xs text-gray-400">by {item.user}</span>
                   )}
-                  <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{item.time}</span>
+                  <span className="text-xs text-gray-400 ml-auto shrink-0">{item.time}</span>
                 </div>
                 {item.body && (
-                  <p className="text-sm text-gray-800 mt-1 whitespace-pre-wrap leading-relaxed">
-                    {item.body}
-                  </p>
+                  <p className="text-sm text-gray-800 mt-1 whitespace-pre-wrap leading-relaxed">{item.body}</p>
                 )}
                 {item.attachments && item.attachments.length > 0 && (
                   <div className="flex gap-2 mt-2 flex-wrap">
                     {item.attachments.map((att, i) => (
-                      <div
-                        key={i}
-                        className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-xs flex items-center gap-1 cursor-pointer hover:bg-gray-100"
-                      >
-                        <span>
-                          {att.file_type === "photo" ? "📸"
-                            : att.file_type === "video" ? "🎬"
-                            : att.file_type === "voice_memo" ? "🎙️"
-                            : "📎"}
-                        </span>
+                      <div key={i} className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-xs flex items-center gap-1 cursor-pointer hover:bg-gray-100">
+                        <span>{att.file_type === "photo" ? "📸" : att.file_type === "video" ? "🎬" : att.file_type === "voice_memo" ? "🎙️" : "📎"}</span>
                         <span className="truncate max-w-[120px] text-gray-700">{att.file_name}</span>
                       </div>
                     ))}
@@ -1240,11 +1107,8 @@ export default function FieldOffice() {
         ))}
       </div>
 
-      {/* Datalist for job sites autocomplete */}
       <datalist id="job-sites-list">
-        {jobSites.map((s) => (
-          <option key={s.id} value={s.name} />
-        ))}
+        {jobSites.map((s) => <option key={s.id} value={s.name} />)}
       </datalist>
     </div>
   );
