@@ -626,10 +626,450 @@ function SoccerLayout() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// CALCULATOR 6: French Drain / Trench
+// ══════════════════════════════════════════════════════════════════════════
+
+interface DrainRun {
+  id: number;
+  name: string;
+  linearFt: string;
+  widthIn: string;
+  depthIn: string;
+  pipeDiamIn: string;
+  gravelTonsPerCY: string;
+}
+
+let _drainId = 0;
+function newRun(name = ""): DrainRun {
+  return { id: ++_drainId, name, linearFt: "", widthIn: "12", depthIn: "18", pipeDiamIn: "4", gravelTonsPerCY: "1.4" };
+}
+
+function calcRunVolumes(run: DrainRun) {
+  const lf        = parseFloat(run.linearFt) || 0;
+  const wFt       = (parseFloat(run.widthIn) || 0) / 12;
+  const dFt       = (parseFloat(run.depthIn) || 0) / 12;
+  const pipeDFt   = (parseFloat(run.pipeDiamIn) || 0) / 12;
+  const tonsPerCY = parseFloat(run.gravelTonsPerCY) || 1.4;
+
+  const trenchCuFt   = lf * wFt * dFt;
+  const trenchCY     = round(trenchCuFt / 27);
+  const pipeCuFt     = Math.PI * (pipeDFt / 2) ** 2 * lf;
+  const gravelCuFt   = Math.max(0, trenchCuFt - pipeCuFt);
+  const gravelCY     = round(gravelCuFt / 27);
+  const gravelTons   = round(gravelCY * tonsPerCY);
+  // fabric wraps bottom + two sides; top is open (trench perim = w + 2d, per linear ft)
+  const fabricSqFt   = round(lf * ((parseFloat(run.widthIn) || 0) / 12 + 2 * (parseFloat(run.depthIn) || 0) / 12));
+
+  return { lf, trenchCY, gravelCY, gravelTons, fabricSqFt };
+}
+
+const PIPE_SIZES = ["2", "3", "4", "6", "8", "10", "12"];
+const GRAVEL_TYPES = [
+  { label: "Drain Rock / Pea Gravel (1.3)", value: "1.3" },
+  { label: "Crushed Granite (1.4)", value: "1.4" },
+  { label: "Crushed Limestone (1.5)", value: "1.5" },
+];
+
+function FrenchDrainCalculator() {
+  const [runs, setRuns] = useState<DrainRun[]>([newRun("Perimeter")]);
+
+  function updateRun(id: number, key: keyof DrainRun, val: string) {
+    setRuns(prev => prev.map(r => r.id === id ? { ...r, [key]: val } : r));
+  }
+
+  function addRun() {
+    setRuns(prev => [...prev, newRun(`Run ${prev.length + 1}`)]);
+  }
+
+  function removeRun(id: number) {
+    setRuns(prev => prev.filter(r => r.id !== id));
+  }
+
+  const computed = runs.map(r => ({ ...r, ...calcRunVolumes(r) }));
+  const totals = computed.reduce(
+    (acc, r) => ({
+      lf:         acc.lf + r.lf,
+      trenchCY:   acc.trenchCY + r.trenchCY,
+      gravelCY:   acc.gravelCY + r.gravelCY,
+      gravelTons: acc.gravelTons + r.gravelTons,
+      fabricSqFt: acc.fabricSqFt + r.fabricSqFt,
+    }),
+    { lf: 0, trenchCY: 0, gravelCY: 0, gravelTons: 0, fabricSqFt: 0 }
+  );
+
+  const hasAny = computed.some(r => r.lf > 0);
+
+  return (
+    <Card title="French Drain / Trench Calculator" emoji="🌊">
+      <p className="text-xs text-gray-500 mb-4">
+        Add each drain run separately — perimeter, center spine, cross drains, goal area, etc. Gravel fill accounts for pipe displacement.
+      </p>
+
+      {/* Run rows */}
+      <div className="space-y-3 mb-4">
+        {runs.map((run, idx) => {
+          const v = computed[idx];
+          return (
+            <div key={run.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              {/* Run header */}
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="text"
+                  value={run.name}
+                  onChange={e => updateRun(run.id, "name", e.target.value)}
+                  placeholder="Run name (e.g. Perimeter)"
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                {runs.length > 1 && (
+                  <button
+                    onClick={() => removeRun(run.id)}
+                    className="px-2 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+
+              {/* Run inputs */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
+                <Field label="Linear Feet">
+                  <NumInput value={run.linearFt} onChange={v => updateRun(run.id, "linearFt", v)} placeholder="200" />
+                </Field>
+                <Field label="Trench Width (in)">
+                  <NumInput value={run.widthIn} onChange={v => updateRun(run.id, "widthIn", v)} placeholder="12" />
+                </Field>
+                <Field label="Trench Depth (in)">
+                  <NumInput value={run.depthIn} onChange={v => updateRun(run.id, "depthIn", v)} placeholder="18" />
+                </Field>
+                <Field label="Pipe Dia. (in)">
+                  <select
+                    value={run.pipeDiamIn}
+                    onChange={e => updateRun(run.id, "pipeDiamIn", e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    {PIPE_SIZES.map(s => <option key={s} value={s}>{s}" pipe</option>)}
+                  </select>
+                </Field>
+                <Field label="Gravel Type">
+                  <select
+                    value={run.gravelTonsPerCY}
+                    onChange={e => updateRun(run.id, "gravelTonsPerCY", e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    {GRAVEL_TYPES.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+
+              {/* Per-run results */}
+              {v.lf > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  <Result label="Linear Ft" value={v.lf.toLocaleString()} unit="ft" />
+                  <Result label="Excavation" value={v.trenchCY} unit="CY" />
+                  <Result label="Drain Gravel" value={v.gravelCY} unit="CY" highlight />
+                  <Result label="Gravel Tons" value={v.gravelTons} unit="tons" highlight />
+                  <Result label="Filter Fabric" value={v.fabricSqFt.toLocaleString()} unit="sqft" />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Add run button */}
+      <button
+        onClick={addRun}
+        className="w-full py-2 rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-green-400 hover:text-green-700 transition-colors mb-4"
+      >
+        + Add Another Drain Run
+      </button>
+
+      {/* Totals */}
+      {hasAny && (
+        <div className="rounded-xl bg-gray-900 text-white p-4">
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-3">Project Drain Totals</p>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {[
+              { label: "Total Linear Ft", value: round(totals.lf, 0).toLocaleString(), unit: "ft" },
+              { label: "Total Excavation", value: round(totals.trenchCY), unit: "CY" },
+              { label: "Total Drain Gravel", value: round(totals.gravelCY), unit: "CY", green: true },
+              { label: "Gravel Tons", value: round(totals.gravelTons), unit: "tons", green: true },
+              { label: "Filter Fabric", value: round(totals.fabricSqFt, 0).toLocaleString(), unit: "sqft" },
+            ].map(item => (
+              <div key={item.label}>
+                <p className="text-xs text-gray-400">{item.label}</p>
+                <p className={`text-xl font-bold ${item.green ? "text-green-400" : "text-white"}`}>
+                  {item.value} <span className="text-sm font-normal text-gray-400">{item.unit}</span>
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-3">
+            Gravel fill = trench volume minus pipe displacement. Fabric covers trench bottom + both walls.
+          </p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CALCULATOR 7: Project Takeoff Summary
+// ══════════════════════════════════════════════════════════════════════════
+
+interface RemovalLine {
+  id: number;
+  label: string;
+  cy: string;
+}
+
+interface MaterialLine {
+  id: number;
+  label: string;
+  cy: string;
+  tonsPerCY: string;
+  sqft: string;
+  linFt: string;
+  unit: "cy" | "sqft";
+}
+
+let _remId = 0;
+let _matId = 0;
+
+function ProjectTakeoffCalculator() {
+  // Removal section
+  const [soilLbs, setSoilLbs] = useState("2700");
+  const [truckCY, setTruckCY] = useState("14");
+  const [removalLines, setRemovalLines] = useState<RemovalLine[]>([
+    { id: ++_remId, label: "Field Sub-grade Cut", cy: "" },
+    { id: ++_remId, label: "French Drain Excavation", cy: "" },
+  ]);
+
+  // Material order section
+  const [fillDirtCY, setFillDirtCY] = useState("");
+  const [matLines, setMatLines] = useState<MaterialLine[]>([
+    { id: ++_matId, label: "Field Drainage Gravel", cy: "", tonsPerCY: "1.4", sqft: "", linFt: "", unit: "cy" },
+    { id: ++_matId, label: "French Drain Gravel",   cy: "", tonsPerCY: "1.3", sqft: "", linFt: "", unit: "cy" },
+    { id: ++_matId, label: "Screenings / Chips",    cy: "", tonsPerCY: "1.35", sqft: "", linFt: "", unit: "cy" },
+    { id: ++_matId, label: "Pad",                   cy: "", tonsPerCY: "0",   sqft: "", linFt: "", unit: "sqft" },
+    { id: ++_matId, label: "Turf",                  cy: "", tonsPerCY: "0",   sqft: "", linFt: "", unit: "sqft" },
+  ]);
+
+  function updateRemoval(id: number, key: keyof RemovalLine, val: string) {
+    setRemovalLines(prev => prev.map(r => r.id === id ? { ...r, [key]: val } : r));
+  }
+  function addRemoval() {
+    setRemovalLines(prev => [...prev, { id: ++_remId, label: "Other Removal", cy: "" }]);
+  }
+  function removeRemoval(id: number) {
+    setRemovalLines(prev => prev.filter(r => r.id !== id));
+  }
+
+  function updateMat(id: number, key: keyof MaterialLine, val: string) {
+    setMatLines(prev => prev.map(m => m.id === id ? { ...m, [key]: val } : m));
+  }
+  function addMaterial() {
+    setMatLines(prev => [...prev, { id: ++_matId, label: "Other Material", cy: "", tonsPerCY: "1.4", sqft: "", linFt: "", unit: "cy" }]);
+  }
+  function removeMat(id: number) {
+    setMatLines(prev => prev.filter(m => m.id !== id));
+  }
+
+  // Removal totals
+  const totalRemovalCY = removalLines.reduce((s, r) => s + (parseFloat(r.cy) || 0), 0);
+  const fillDirtCYNum = parseFloat(fillDirtCY) || 0;
+  const netRemovalCY = Math.max(0, totalRemovalCY - fillDirtCYNum);
+  const soilLbsNum = parseFloat(soilLbs) || 2700;
+  const truckCYNum = parseFloat(truckCY) || 14;
+  const totalRemovalTons = round((totalRemovalCY * soilLbsNum) / 2000);
+  const truckLoads = Math.ceil(netRemovalCY / truckCYNum);
+
+  // Material totals
+  const totalGravelCY = matLines
+    .filter(m => m.unit === "cy" && m.tonsPerCY !== "0")
+    .reduce((s, m) => s + (parseFloat(m.cy) || 0), 0);
+  const totalGravelTons = matLines
+    .filter(m => m.unit === "cy" && m.tonsPerCY !== "0")
+    .reduce((s, m) => s + round((parseFloat(m.cy) || 0) * (parseFloat(m.tonsPerCY) || 0)), 0);
+
+  const sel = "w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500";
+
+  return (
+    <Card title="Project Takeoff Summary" emoji="📋">
+      <p className="text-xs text-gray-500 mb-5">
+        Aggregate numbers from the grading tool, French drain calc, and any other sources to get one complete project summary.
+      </p>
+
+      {/* ── REMOVAL ── */}
+      <div className="mb-6">
+        <h3 className="font-bold text-sm text-gray-800 mb-1">Material Removal (Haul-Off)</h3>
+        <p className="text-xs text-gray-500 mb-3">Enter cubic yards from each source. Use numbers from the Field Grading and French Drain tools above.</p>
+
+        <div className="space-y-2 mb-3">
+          {removalLines.map(line => (
+            <div key={line.id} className="flex gap-2 items-center">
+              <input
+                type="text"
+                value={line.label}
+                onChange={e => updateRemoval(line.id, "label", e.target.value)}
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                placeholder="Item name"
+              />
+              <div className="w-28 shrink-0">
+                <NumInput value={line.cy} onChange={v => updateRemoval(line.id, "cy", v)} placeholder="0" />
+              </div>
+              <span className="text-xs text-gray-400 shrink-0">CY</span>
+              <button
+                onClick={() => removeRemoval(line.id)}
+                className="text-xs text-gray-300 hover:text-red-400 shrink-0 px-1"
+              >✕</button>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={addRemoval}
+          className="text-xs text-green-700 hover:text-green-800 font-medium mb-4"
+        >
+          + Add removal item
+        </button>
+
+        {/* Soil weight + truck size */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <Field label="Soil Weight (lbs/CY)">
+            <NumInput value={soilLbs} onChange={setSoilLbs} placeholder="2700" />
+          </Field>
+          <Field label="Fill Dirt Needed (CY)">
+            <NumInput value={fillDirtCY} onChange={setFillDirtCY} placeholder="0" />
+          </Field>
+          <Field label="Truck Size (CY)">
+            <select value={truckCY} onChange={e => setTruckCY(e.target.value)} className={sel}>
+              <option value="10">10 CY — small dump</option>
+              <option value="14">14 CY — tandem</option>
+              <option value="18">18 CY — tri-axle</option>
+              <option value="20">20 CY — semi</option>
+            </select>
+          </Field>
+        </div>
+
+        {/* Removal results */}
+        {totalRemovalCY > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Result label="Total Removal" value={round(totalRemovalCY)} unit="CY" />
+            <Result label="Est. Weight" value={totalRemovalTons.toLocaleString()} unit="tons" />
+            <Result label={`Net Haul-Off (after ${fillDirtCYNum > 0 ? `${fillDirtCYNum} CY fill` : "fill"})`} value={round(netRemovalCY)} unit="CY" highlight />
+            <Result label={`Truck Loads (${truckCY} CY)`} value={truckLoads} unit="loads" highlight />
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-gray-200 mb-6" />
+
+      {/* ── MATERIALS IN ── */}
+      <div className="mb-4">
+        <h3 className="font-bold text-sm text-gray-800 mb-1">Materials to Bring In</h3>
+        <p className="text-xs text-gray-500 mb-3">Enter quantities per material type. CY-based materials show tonnage; sqft-based show area only.</p>
+
+        <div className="space-y-2 mb-3">
+          {matLines.map(line => (
+            <div key={line.id} className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+              <div className="flex gap-2 items-center mb-2">
+                <input
+                  type="text"
+                  value={line.label}
+                  onChange={e => updateMat(line.id, "label", e.target.value)}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <select value={line.unit} onChange={e => updateMat(line.id, "unit", e.target.value as "cy"|"sqft")} className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500">
+                  <option value="cy">CY</option>
+                  <option value="sqft">sqft</option>
+                </select>
+                <button onClick={() => removeMat(line.id)} className="text-xs text-gray-300 hover:text-red-400 px-1">✕</button>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {line.unit === "cy" ? (
+                  <>
+                    <div className="w-28">
+                      <NumInput value={line.cy} onChange={v => updateMat(line.id, "cy", v)} placeholder="0 CY" />
+                    </div>
+                    {line.tonsPerCY !== "0" && (
+                      <div className="w-32">
+                        <select value={line.tonsPerCY} onChange={e => updateMat(line.id, "tonsPerCY", e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-500">
+                          <option value="1.3">1.3 t/CY</option>
+                          <option value="1.35">1.35 t/CY</option>
+                          <option value="1.4">1.4 t/CY</option>
+                          <option value="1.5">1.5 t/CY</option>
+                        </select>
+                      </div>
+                    )}
+                    {(parseFloat(line.cy) || 0) > 0 && line.tonsPerCY !== "0" && (
+                      <div className="flex items-center gap-1 px-2 py-1 bg-green-50 border border-green-200 rounded-lg text-xs font-semibold text-green-700">
+                        {round((parseFloat(line.cy) || 0) * parseFloat(line.tonsPerCY))} tons
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="w-28">
+                      <NumInput value={line.sqft} onChange={v => updateMat(line.id, "sqft", v)} placeholder="0 sqft" />
+                    </div>
+                    <div className="w-28">
+                      <NumInput value={line.linFt} onChange={v => updateMat(line.id, "linFt", v)} placeholder="0 lin ft" />
+                    </div>
+                    <div className="flex items-center text-xs text-gray-400 gap-2">
+                      <span>sqft / lin ft</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={addMaterial}
+          className="text-xs text-green-700 hover:text-green-800 font-medium mb-4"
+        >
+          + Add material item
+        </button>
+      </div>
+
+      {/* Grand summary bar */}
+      {(totalRemovalCY > 0 || totalGravelCY > 0) && (
+        <div className="rounded-xl bg-gray-900 text-white p-4">
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-3">Project Grand Summary</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-gray-400">Total Haul-Off</p>
+              <p className="text-2xl font-black text-red-400">{round(netRemovalCY)} <span className="text-sm font-normal text-gray-400">CY</span></p>
+              <p className="text-xs text-gray-500">{totalRemovalTons} tons · {truckLoads} loads</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Fill Dirt In</p>
+              <p className="text-2xl font-black text-amber-400">{fillDirtCYNum || "—"} <span className="text-sm font-normal text-gray-400">{fillDirtCYNum ? "CY" : ""}</span></p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Total Gravel In</p>
+              <p className="text-2xl font-black text-green-400">{round(totalGravelCY)} <span className="text-sm font-normal text-gray-400">CY</span></p>
+              <p className="text-xs text-gray-500">{round(totalGravelTons)} tons</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Truck Loads Out</p>
+              <p className="text-2xl font-black text-white">{truckLoads} <span className="text-sm font-normal text-gray-400">loads</span></p>
+              <p className="text-xs text-gray-500">@ {truckCY} CY / truck</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // TOOL CATALOG & NAVIGATION
 // ══════════════════════════════════════════════════════════════════════════
 
-type ToolId = "turf" | "gravel" | "infill" | "concrete" | "football" | "baseball" | "soccer" | "grading";
+type ToolId = "turf" | "gravel" | "infill" | "concrete" | "french-drain" | "takeoff" | "football" | "baseball" | "soccer" | "grading";
 type CategoryId = "all" | "calculators" | "field-refs" | "advanced";
 
 interface ToolDef {
@@ -643,14 +1083,16 @@ interface ToolDef {
 }
 
 const TOOLS: ToolDef[] = [
-  { id: "turf",     label: "Turf & Sqft",       emoji: "🌿", desc: "Area, waste %, and linear footage",        category: "calculators" },
-  { id: "gravel",   label: "Gravel / Base",      emoji: "🪨", desc: "Cubic yards and tons from depth",          category: "calculators" },
-  { id: "infill",   label: "Infill",             emoji: "🏖️", desc: "Single or dual-layer bag quantities",       category: "calculators" },
-  { id: "concrete", label: "Concrete",           emoji: "🧱", desc: "Slab bags and cost estimator",              category: "calculators" },
-  { id: "football", label: "Football Dims",      emoji: "🏈", desc: "NFL, NCAA, and HS field specifications",    category: "field-refs" },
-  { id: "baseball", label: "Baseball Dims",      emoji: "⚾", desc: "MLB, 60/90, and 50/70 youth layouts",      category: "field-refs" },
-  { id: "soccer",   label: "Soccer Dims",        emoji: "⚽", desc: "FIFA, HS, and youth field specs",           category: "field-refs" },
-  { id: "grading",  label: "Field Grading",      emoji: "📐", desc: "Laser survey cut/fill analysis & orders",  category: "advanced", external: true, href: "/tools/grading" },
+  { id: "turf",         label: "Turf & Sqft",       emoji: "🌿", desc: "Area, waste %, and linear footage",           category: "calculators" },
+  { id: "gravel",       label: "Gravel / Base",      emoji: "🪨", desc: "Cubic yards and tons from depth",             category: "calculators" },
+  { id: "infill",       label: "Infill",             emoji: "🏖️", desc: "Single or dual-layer bag quantities",          category: "calculators" },
+  { id: "concrete",     label: "Concrete",           emoji: "🧱", desc: "Slab bags and cost estimator",                 category: "calculators" },
+  { id: "french-drain", label: "French Drain",       emoji: "🌊", desc: "Multi-run trench excavation & drain gravel",   category: "calculators" },
+  { id: "takeoff",      label: "Project Takeoff",    emoji: "📋", desc: "Total removal, haul-off loads & all materials",category: "calculators" },
+  { id: "football",     label: "Football Dims",      emoji: "🏈", desc: "NFL, NCAA, and HS field specifications",       category: "field-refs" },
+  { id: "baseball",     label: "Baseball Dims",      emoji: "⚾", desc: "MLB, 60/90, and 50/70 youth layouts",         category: "field-refs" },
+  { id: "soccer",       label: "Soccer Dims",        emoji: "⚽", desc: "FIFA, HS, and youth field specs",              category: "field-refs" },
+  { id: "grading",      label: "Field Grading",      emoji: "📐", desc: "Laser survey cut/fill analysis & orders",     category: "advanced", external: true, href: "/tools/grading" },
 ];
 
 const CATEGORIES: { id: CategoryId; label: string; color: string; activeColor: string }[] = [
@@ -776,13 +1218,15 @@ export default function ToolsPage() {
       <div className="border-t border-gray-200" />
 
       {/* Active tool content */}
-      {activeTool === "turf"     && <TurfCalculator />}
-      {activeTool === "gravel"   && <GravelCalculator />}
-      {activeTool === "infill"   && <DualInfillCalculator />}
-      {activeTool === "concrete" && <ConcreteCalculator />}
-      {activeTool === "football" && <FootballLayout />}
-      {activeTool === "baseball" && <BaseballLayout />}
-      {activeTool === "soccer"   && <SoccerLayout />}
+      {activeTool === "turf"         && <TurfCalculator />}
+      {activeTool === "gravel"       && <GravelCalculator />}
+      {activeTool === "infill"       && <DualInfillCalculator />}
+      {activeTool === "concrete"     && <ConcreteCalculator />}
+      {activeTool === "french-drain" && <FrenchDrainCalculator />}
+      {activeTool === "takeoff"      && <ProjectTakeoffCalculator />}
+      {activeTool === "football"     && <FootballLayout />}
+      {activeTool === "baseball"     && <BaseballLayout />}
+      {activeTool === "soccer"       && <SoccerLayout />}
     </div>
   );
 }
