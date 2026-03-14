@@ -518,7 +518,7 @@ export default function SettingsPage() {
       id: `site-${Date.now()}`,
       name: newSiteName.trim(),
       address: newSiteAddress.trim() || null,
-      is_active: true,
+      status: "active",
       created_at: new Date().toISOString(),
     };
     const updated = [...sites, site];
