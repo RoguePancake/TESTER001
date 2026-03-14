@@ -34,3 +34,4 @@ export * from "./automation";
 export * from "./assistant";
 export * from "./employee";
 export * from "./payroll";
+export * from "./grading";

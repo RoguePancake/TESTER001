@@ -826,6 +826,7 @@ const TABS = [
   { id: "football", label: "🏈 Football" },
   { id: "baseball", label: "⚾ Baseball" },
   { id: "soccer", label: "⚽ Soccer" },
+  { id: "grading", label: "📐 Grading" },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -865,6 +866,20 @@ export default function ToolsPage() {
       {active === "football" && <FootballLayout />}
       {active === "baseball" && <BaseballLayout />}
       {active === "soccer" && <SoccerLayout />}
+      {active === "grading" && (
+        <Card title="Field Grading Tool" emoji="📐">
+          <p className="text-sm text-gray-500 mb-4">
+            Full grading analysis for belly (crowned) and extended zones (sidelines, dzones).
+            Enter laser-level elevation readings, calculate cut/fill volumes, and get complete material orders.
+          </p>
+          <a
+            href="/tools/grading"
+            className="inline-block bg-green-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-800 transition-colors"
+          >
+            Open Grading Tool →
+          </a>
+        </Card>
+      )}
     </div>
   );
 }
