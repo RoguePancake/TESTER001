@@ -8,6 +8,7 @@ import {
   type JobSite,
 } from "@/lib/supabase";
 import { calcDurationMinutes } from "@/lib/engines/time";
+import { captureLocation, formatLocation, type GpsCapture } from "@/lib/gps";
 
 // ── localStorage keys ─────────────────────────────────────────────────────
 const LS_ENTRIES = "payclock_entries";
@@ -176,6 +177,10 @@ export default function PayClockPage() {
   const [equipmentUsed, setEquipmentUsed] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // GPS state
+  const [gpsCapture, setGpsCapture] = useState<GpsCapture | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+
   // Add crew member form
   const [showAddCrew, setShowAddCrew] = useState(false);
   const [newCrewName, setNewCrewName] = useState("");
@@ -256,6 +261,18 @@ export default function PayClockPage() {
     if (!selectedUserId) return;
     setClockingIn(true);
 
+    // Capture GPS location (non-blocking — 15s timeout, fallback if denied)
+    setGpsLoading(true);
+    const gps = await captureLocation();
+    setGpsCapture(gps);
+    setGpsLoading(false);
+
+    const gpsNote = gps.location
+      ? `GPS: ${formatLocation(gps.location)}`
+      : `GPS: ${gps.status}`;
+
+    const combinedLocationNote = [locationNote, gpsNote].filter(Boolean).join(" | ");
+
     const parsedRate = payRate ? parseFloat(payRate) : null;
     const parsedTravel = travelTime ? parseInt(travelTime, 10) : null;
 
@@ -274,7 +291,7 @@ export default function PayClockPage() {
         pay_rate: parsedRate,
         work_type: workType || null,
         travel_time: parsedTravel,
-        location_note: locationNote || null,
+        location_note: combinedLocationNote || null,
         weather: weather || null,
         equipment_used: equipmentUsed || null,
         sqft_completed: null,
@@ -290,6 +307,7 @@ export default function PayClockPage() {
         job_name: jobName || null,
         notes: entryNote || null,
         clock_in: new Date().toISOString(),
+        location_note: combinedLocationNote || null,
       });
       const profile = profiles.find((p) => p.id === selectedUserId);
       await supabase!.from("naf_entries").insert({
@@ -831,14 +849,33 @@ export default function PayClockPage() {
             </div>
           )}
 
+          {/* GPS status */}
+          {gpsCapture && (
+            <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${
+              gpsCapture.status === "success"
+                ? "bg-green-50 text-green-700 border border-green-200"
+                : "bg-yellow-50 text-yellow-700 border border-yellow-200"
+            }`}>
+              <span>{gpsCapture.status === "success" ? "📍" : "⚠️"}</span>
+              <span>
+                {gpsCapture.status === "success" && gpsCapture.location
+                  ? `Location captured: ${formatLocation(gpsCapture.location)}`
+                  : `GPS ${gpsCapture.status}: ${gpsCapture.error ?? "Location will not be recorded"}`}
+              </span>
+            </div>
+          )}
+
           {/* Submit button */}
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-gray-400">
+              {gpsLoading ? "📡 Acquiring GPS..." : "📍 GPS auto-captured on clock-in"}
+            </div>
             <button
               type="submit"
               disabled={clockingIn || !selectedUserId}
               className="bg-green-700 hover:bg-green-800 text-white font-semibold px-8 py-2.5 rounded-lg text-sm disabled:opacity-50 transition-colors"
             >
-              {clockingIn ? "Clocking in..." : "✅ Clock In Now"}
+              {clockingIn ? (gpsLoading ? "📡 Getting location..." : "Clocking in...") : "✅ Clock In Now"}
             </button>
           </div>
         </form>

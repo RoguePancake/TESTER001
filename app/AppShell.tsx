@@ -28,6 +28,7 @@ const ALL_NAV_LINKS: NavLink[] = [
   { href: "/tools",     label: "Tools",        icon: "🔧" },
   { href: "/employees", label: "Employees",    icon: "👥", minRole: "field_manager" },
   { href: "/reports",   label: "Reports",      icon: "📊", minRole: "field_manager" },
+  { href: "/notifications", label: "Alerts",    icon: "🔔" },
   { href: "/settings",  label: "Settings",     icon: "⚙️" },
   { href: "/system",    label: "System Info",  icon: "ℹ️" },
   { href: "/admin",     label: "Admin",        icon: "🛠", minRole: "company_owner" },
@@ -226,6 +227,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     {pendingApprovalsCount > 9 ? "9+" : pendingApprovalsCount}
                   </span>
                 )}
+                {link.href === "/notifications" && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-red-500 text-white rounded-full">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
               </Link>
             ))}
           </nav>
@@ -233,9 +239,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {/* Right side: user info + sign out */}
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (
-              <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-red-500 text-white rounded-full">
+              <Link href="/notifications" className="inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors" title="Unread notifications">
                 {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
+              </Link>
             )}
             {userName && (
               <span className="hidden sm:block text-xs opacity-80 max-w-[120px] truncate">
@@ -286,6 +292,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               {link.href === "/hours" && pendingApprovalsCount > 0 && (
                 <span className="absolute top-0.5 right-1 inline-flex items-center justify-center min-w-[14px] h-3.5 px-1 text-[9px] font-bold bg-yellow-400 text-yellow-900 rounded-full">
                   {pendingApprovalsCount > 9 ? "9+" : pendingApprovalsCount}
+                </span>
+              )}
+              {link.href === "/notifications" && unreadCount > 0 && (
+                <span className="absolute top-0.5 right-1 inline-flex items-center justify-center min-w-[14px] h-3.5 px-1 text-[9px] font-bold bg-red-500 text-white rounded-full">
+                  {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
             </Link>
